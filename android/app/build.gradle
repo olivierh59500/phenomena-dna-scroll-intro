@@ -1,0 +1,41 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.olivierh.phenomenadna"
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.olivierh.phenomenadna"
+        minSdk 23
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        // These versions and the arm64-only ABI are deliberate for the
+        // validated Pixel development build.
+        disable += ["AndroidGradlePluginVersion", "ChromeOsAbiSupport"]
+    }
+}
+
+dependencies {
+    implementation files("libs/phenomenadna.aar")
+}
