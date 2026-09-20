@@ -4,4 +4,12 @@ This directory contains the construction-kit version of phenomena-dna-scroll-int
 
 Run the original with `go run ./cmd/phenomena` and this version with `go run ./dck/cmd/phenomena` from the repository root.
 
-The choreography and assets stay local; reusable rendering and effects live in `../../lib/democonstructionkit`. Second Reality retains its original ST3 music synchronization.
+The choreography and assets stay local; reusable rendering and effects live in `../../lib/democonstructionkit`.
+
+## Shared DNA scroll
+
+`scrolling.NewDNAFrames` constructs the original silver front, purple back and central raster. `DrawSlices` renders the circular scroll buffer. Multiscreen uses the same implementation. The surrounding intro, original text controls and music remain here.
+
+For a new scroll, register `DNA.Mode()` in `scrolling.New(Config{Modes: ...})`. Each font supplies its own metrics; filmstrips adapt to glyph dimensions, including odd widths and proportional or mixed fonts. Rotation speed, phase, twist wavelength/amplitude, vertical waves and face colors are configurable. Use `{shape:dna}` or a timed mode sequence.
+
+See the [DCK effect configuration guide](../../../lib/democonstructionkit/docs/EFFECT_OPTIONS.md) for the shared API and examples.
