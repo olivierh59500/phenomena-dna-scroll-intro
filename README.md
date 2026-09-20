@@ -33,3 +33,9 @@ Avec un appareil Android autorisé en USB :
 Le script génère l’AAR Ebitengine, compile l’APK de débogage, l’installe puis
 lance `com.olivierh.phenomenadna/.MainActivity`. Un toucher pendant la scène
 principale lance la séquence de sortie, comme le clic sur ordinateur.
+
+## Optional DCK version
+
+The original implementation remains at its original paths. Run it with `go run ./cmd/phenomena`.
+
+The construction-kit version is in [dck/](dck/README.md). Run `go run ./dck/cmd/phenomena` from this directory. Both versions share the original assets.

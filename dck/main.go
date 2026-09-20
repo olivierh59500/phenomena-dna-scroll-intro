@@ -1,10 +1,14 @@
 // Package phenomena implements the Phenomena DNA scroll intro remake.
 package phenomena
 
+import originalassets "phenomena-dna-scroll-intro"
+
 import (
 	"bytes"
-	_ "embed"
+
 	"fmt"
+	"github.com/olivierh59500/democonstructionkit/composite"
+	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"image"
 	"image/color"
 	_ "image/png"
@@ -30,23 +34,23 @@ const (
 )
 
 // Embed all assets
-//
-//go:embed assets/rasterbar.png
-var rasterbarData []byte
+var rasterbarData = originalassets.
+	DCKAssetRasterbarData()
 
-//go:embed assets/font.png
-var fontData []byte
+var fontData = originalassets.
+	DCKAssetFontData()
 
-//go:embed assets/logo.png
-var logoData []byte
+var logoData = originalassets.
+	DCKAssetLogoData()
 
-//go:embed assets/photon.png
-var photonData []byte
+var photonData = originalassets.
+	DCKAssetPhotonData()
 
-//go:embed assets/music.ym
-var musicData []byte
+var musicData = originalassets.
 
-// YMPlayer wraps the YM player for Ebiten audio
+	// YMPlayer wraps the YM player for Ebiten audio
+	DCKAssetMusicData()
+
 type YMPlayer struct {
 	player *stsound.StSound
 	buffer []int16
@@ -186,6 +190,8 @@ type ScrollChar struct {
 
 // Game represents the main game state
 type Game struct {
+	scrollRenderer *scrolling.Scrolling
+	scrollBatch    *composite.QuadBatch
 	// Demo state
 	state       DemoState
 	initialized bool
@@ -777,62 +783,41 @@ func (g *Game) renderNextFrames(speed float64) {
 
 // drawScroller draws the 3D rotating text scroller
 func (g *Game) drawScroller(screen *ebiten.Image) {
-	g.scrollVertices = g.scrollVertices[:0]
-	g.scrollIndices = g.scrollIndices[:0]
-	const (
-		scaleX     = float32(2)
-		scaleY     = float32(1.5)
-		translateY = float32(156)
-	)
-
+	if g.scrollRenderer == nil {
+		var err error
+		g.scrollRenderer, err = scrolling.FromImages(make([]*ebiten.Image, 240), 2)
+		if err != nil {
+			panic(err)
+		}
+		g.scrollBatch = composite.NewQuadBatch(240)
+		g.scrollBatch.AlternateDiagonal = true
+	}
+	g.scrollBatch.Begin(screen, g.cnvFrames)
 	t2 := g.t
 	waveSin, waveCos := math.Sincos(5*10.50 + g.t/6)
-	for i := 0; i < 240; i++ {
+	state := scrolling.IdentityState()
+	state.Paint = func(dst *ebiten.Image, s scrolling.Sample, op ebiten.DrawImageOptions) {
+		i := s.Index
 		charIndex := g.scrollHead + i
 		if charIndex >= len(g.scrollChars) {
 			charIndex -= len(g.scrollChars)
 		}
 		char := g.scrollChars[charIndex]
-		var ypos float64
-		if t2 > 5*50-float64(i)*0.0033 {
+		ypos := 80.0
+		if t2 > 5*50-float64(i)*.0033 {
 			ypos = 80 * waveCos
-		} else {
-			ypos = 80
 		}
-
-		charsetIdx := int(char.glyph)
-		if charsetIdx < len(charset) {
-			frame := int(char.frame)
-			slice := int(char.slice)
-			sx := frame*16 + slice*2
-			sy := charsetIdx * 33
-
-			if sx >= 0 && sx <= 480-2 && sy >= 0 && sy <= len(charset)*33-33 {
-				g.scrollVertices, g.scrollIndices = appendTexturedQuad(
-					g.scrollVertices,
-					g.scrollIndices,
-					float32(i*2)*scaleX,
-					translateY+float32(67+ypos)*scaleY,
-					2*scaleX,
-					33*scaleY,
-					float32(sx),
-					float32(sy),
-					2,
-					33,
-				)
-			}
+		index := int(char.glyph)
+		sx := int(char.frame)*16 + int(char.slice)*2
+		sy := index * 33
+		if index < len(charset) && sx >= 0 && sx <= 480-2 && sy >= 0 && sy <= len(charset)*33-33 {
+			g.scrollBatch.Rect(image.Rect(sx, sy, sx+2, sy+33), float32(i*2)*2, 156+float32(67+ypos)*1.5, 4, 33*1.5)
 		}
-
 		t2 += 1.0 / 6.0
-		waveSin, waveCos =
-			waveSin*waveCosStep+waveCos*waveSinStep,
-			waveCos*waveCosStep-waveSin*waveSinStep
+		waveSin, waveCos = waveSin*waveCosStep+waveCos*waveSinStep, waveCos*waveCosStep-waveSin*waveSinStep
 	}
-
-	if len(g.scrollIndices) > 0 {
-		op := &ebiten.DrawTrianglesOptions{Filter: ebiten.FilterNearest}
-		screen.DrawTriangles(g.scrollVertices, g.scrollIndices, g.cnvFrames, op)
-	}
+	g.scrollRenderer.DrawAt(screen, state)
+	g.scrollBatch.Flush()
 }
 
 func appendTexturedQuad(vertices []ebiten.Vertex, indices []uint16, dstX, dstY, dstWidth, dstHeight, srcX, srcY, srcWidth, srcHeight float32) ([]ebiten.Vertex, []uint16) {
