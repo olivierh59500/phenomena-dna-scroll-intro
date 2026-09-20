@@ -24,7 +24,7 @@ func TestCharsetIndex(t *testing.T) {
 func TestCircularScrollerShift(t *testing.T) {
 	game := NewGame()
 	for i := range game.scrollChars {
-		game.scrollChars[i].glyph = uint8(i)
+		game.scrollChars[i].Glyph = i
 	}
 
 	game.shiftLeft()
@@ -33,14 +33,14 @@ func TestCircularScrollerShift(t *testing.T) {
 	if game.scrollHead != 1 {
 		t.Fatalf("scroll head = %d, want 1", game.scrollHead)
 	}
-	if got := game.scrollChars[game.scrollHead].glyph; got != 1 {
+	if got := game.scrollChars[game.scrollHead].Glyph; got != 1 {
 		t.Fatalf("first logical glyph = %d, want 1", got)
 	}
 	tail := (game.scrollHead + len(game.scrollChars) - 1) % len(game.scrollChars)
-	if got, want := game.scrollChars[tail].glyph, uint8(1); got != want {
+	if got, want := game.scrollChars[tail].Glyph, 1; got != want {
 		t.Fatalf("tail glyph = %d, want %d", got, want)
 	}
-	if got, want := game.scrollChars[tail].slice, uint8(3); got != want {
+	if got, want := game.scrollChars[tail].Slice, 3; got != want {
 		t.Fatalf("tail slice = %d, want %d", got, want)
 	}
 }

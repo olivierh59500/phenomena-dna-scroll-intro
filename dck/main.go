@@ -7,7 +7,6 @@ import (
 	"bytes"
 
 	"fmt"
-	"github.com/olivierh59500/democonstructionkit/composite"
 	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"image"
 	"image/color"
@@ -182,16 +181,11 @@ const (
 )
 
 // ScrollChar represents a character in the 3D scroller
-type ScrollChar struct {
-	glyph uint8
-	frame uint8
-	slice uint8
-}
+type ScrollChar = scrolling.DNASlice
 
 // Game represents the main game state
 type Game struct {
-	scrollRenderer *scrolling.Scrolling
-	scrollBatch    *composite.QuadBatch
+	dnaFrames *scrolling.DNAFrames
 	// Demo state
 	state       DemoState
 	initialized bool
@@ -496,131 +490,16 @@ func (g *Game) initTextPages() {
 
 // initCharacterFrames creates all animation frames for the 3D rotating characters
 func (g *Game) initCharacterFrames() {
-	// Create gradient bars - IMPORTANT: Red bar must be 480px wide to cover all frames
-	cnvRedBar := createGradient(480, 9, gdcRedBar)
-	cnvSilverBar := createGradient(480, 33, gdcSilverBar)
-	cnvPurpleBar := createGradient(480, 33, gdcPurpleBar)
-	defer cnvRedBar.Deallocate()
-	defer cnvSilverBar.Deallocate()
-	defer cnvPurpleBar.Deallocate()
-
-	// Create font canvases for front and back
-	cnvFont := ebiten.NewImage(len(charset)*16, 33)
-	cnvFont2 := ebiten.NewImage(len(charset)*16, 33)
-	defer cnvFont.Deallocate()
-	defer cnvFont2.Deallocate()
-
-	// Clear canvases
-	cnvFont.Fill(color.RGBA{0, 0, 0, 0})
-	cnvFont2.Fill(color.RGBA{0, 0, 0, 0})
-
-	// Render front-side chars (inclined) - IMPORTANT: draw by 2-pixel slices like original
-	for chr := 0; chr < len(charset); chr++ {
-		// Draw character slice by slice (8 slices of 2 pixels each)
-		for x := 0; x < 16; x += 2 {
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(float64(chr*16+x), 7) // Center vertically in 33px
-
-			// Draw 2-pixel wide slice
-			sx := chr*16 + x
-			subImg := g.imgFont.SubImage(image.Rect(sx, 0, sx+2, 26)).(*ebiten.Image)
-			cnvFont.DrawImage(subImg, op)
-		}
+	core, front, back := createGradient(480, 9, gdcRedBar), createGradient(480, 33, gdcSilverBar), createGradient(480, 33, gdcPurpleBar)
+	defer core.Deallocate()
+	defer front.Deallocate()
+	defer back.Deallocate()
+	var err error
+	g.dnaFrames, err = scrolling.NewDNAFrames(g.fontGlyphs[:], scrolling.DNAFrameConfig{Frames: 30, Height: 33, Step: 2.25, Front: front, Back: back, Core: core, CoreY: 12})
+	if err != nil {
+		panic(err)
 	}
-
-	// Render back-side chars (rot 180, flip horizontal)
-	for chr := 0; chr < len(charset); chr++ {
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Scale(-1, -1)
-		op.GeoM.Translate(float64((chr+1)*16), 26) // Adjusted for font height
-
-		sx := chr * 16
-		subImg := cnvFont.SubImage(image.Rect(sx, 0, sx+16, 33)).(*ebiten.Image)
-		cnvFont2.DrawImage(subImg, op)
-	}
-
-	// Create animation frames canvas
-	g.cnvFrames = ebiten.NewImage(480, len(charset)*33)
-
-	// Generate frames for each character
-	for charIndex := 0; charIndex < len(charset); charIndex++ {
-		// Each character has 30 frames of animation (480 pixels / 16 pixels per frame)
-
-		// Silver chars (front side) - character appears from bottom, rotates to top
-		cnvSilverChars := ebiten.NewImage(480, 33)
-		posX := 0
-		for posY := 33.0; posY > -33; posY -= 2.25 { // 30 steps
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(float64(posX), posY)
-
-			sx := charIndex * 16
-			subImg := cnvFont.SubImage(image.Rect(sx, 0, sx+16, 33)).(*ebiten.Image)
-			cnvSilverChars.DrawImage(subImg, op)
-			posX += 16
-		}
-
-		// Purple chars (back side) - character rotated 180 degrees
-		cnvPurpleChars := ebiten.NewImage(480, 33)
-		posX = 0
-		// First half: character rises from 0 to 33
-		for posY := 0.0; posY < 33; posY += 2.25 { // 15 steps
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(float64(posX), posY)
-
-			sx := charIndex * 16
-			subImg := cnvFont2.SubImage(image.Rect(sx, 0, sx+16, 33)).(*ebiten.Image)
-			cnvPurpleChars.DrawImage(subImg, op)
-			posX += 16
-		}
-		// Second half: character continues from -33 to 0
-		for posY := -33.0; posY < 0; posY += 2.25 { // 15 steps
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(float64(posX), posY)
-
-			sx := charIndex * 16
-			subImg := cnvFont2.SubImage(image.Rect(sx, 0, sx+16, 33)).(*ebiten.Image)
-			cnvPurpleChars.DrawImage(subImg, op)
-			posX += 16
-		}
-
-		// Apply gradients with masking
-		// Silver gradient
-		tmpSilver := ebiten.NewImage(480, 33)
-		tmpSilver.DrawImage(cnvSilverBar, nil)
-		opSilver := &ebiten.DrawImageOptions{}
-		opSilver.Blend = ebiten.BlendDestinationIn
-		tmpSilver.DrawImage(cnvSilverChars, opSilver)
-
-		// Purple gradient
-		tmpPurple := ebiten.NewImage(480, 33)
-		tmpPurple.DrawImage(cnvPurpleBar, nil)
-		opPurple := &ebiten.DrawImageOptions{}
-		opPurple.Blend = ebiten.BlendDestinationIn
-		tmpPurple.DrawImage(cnvPurpleChars, opPurple)
-
-		// Merge all layers for this character
-		frameY := charIndex * 33
-
-		// 1. Draw purple (back) characters
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(0, float64(frameY))
-		g.cnvFrames.DrawImage(tmpPurple, op)
-
-		// 2. Draw red bar in the middle
-		op.GeoM.Reset()
-		op.GeoM.Translate(0, float64(frameY+12))
-		g.cnvFrames.DrawImage(cnvRedBar, op)
-
-		// 3. Draw silver (front) characters on top
-		op.GeoM.Reset()
-		op.GeoM.Translate(0, float64(frameY))
-		g.cnvFrames.DrawImage(tmpSilver, op)
-
-		cnvSilverChars.Deallocate()
-		cnvPurpleChars.Deallocate()
-		tmpSilver.Deallocate()
-		tmpPurple.Deallocate()
-	}
+	g.cnvFrames = g.dnaFrames.Image
 }
 
 // initAudio opens the audio device only after Ebitengine's game loop is live.
@@ -749,9 +628,9 @@ func (g *Game) addSliceOfChar(ch byte, slice int) {
 	}
 
 	g.scrollChars[tail] = ScrollChar{
-		glyph: uint8(glyph),
-		frame: g.scrollChars[previous].frame,
-		slice: uint8(slice),
+		Glyph: glyph,
+		Frame: g.scrollChars[previous].Frame,
+		Slice: slice,
 	}
 }
 
@@ -777,47 +656,24 @@ func (g *Game) renderNextFrames(speed float64) {
 		} else if newFrame < 0 {
 			newFrame += 30
 		}
-		g.scrollChars[index].frame = uint8(newFrame)
+		g.scrollChars[index].Frame = int(newFrame)
 	}
 }
 
 // drawScroller draws the 3D rotating text scroller
 func (g *Game) drawScroller(screen *ebiten.Image) {
-	if g.scrollRenderer == nil {
-		var err error
-		g.scrollRenderer, err = scrolling.FromImages(make([]*ebiten.Image, 240), 2)
-		if err != nil {
-			panic(err)
-		}
-		g.scrollBatch = composite.NewQuadBatch(240)
-		g.scrollBatch.AlternateDiagonal = true
-	}
-	g.scrollBatch.Begin(screen, g.cnvFrames)
 	t2 := g.t
 	waveSin, waveCos := math.Sincos(5*10.50 + g.t/6)
-	state := scrolling.IdentityState()
-	state.Paint = func(dst *ebiten.Image, s scrolling.Sample, op ebiten.DrawImageOptions) {
-		i := s.Index
-		charIndex := g.scrollHead + i
-		if charIndex >= len(g.scrollChars) {
-			charIndex -= len(g.scrollChars)
-		}
-		char := g.scrollChars[charIndex]
-		ypos := 80.0
-		if t2 > 5*50-float64(i)*.0033 {
-			ypos = 80 * waveCos
-		}
-		index := int(char.glyph)
-		sx := int(char.frame)*16 + int(char.slice)*2
-		sy := index * 33
-		if index < len(charset) && sx >= 0 && sx <= 480-2 && sy >= 0 && sy <= len(charset)*33-33 {
-			g.scrollBatch.Rect(image.Rect(sx, sy, sx+2, sy+33), float32(i*2)*2, 156+float32(67+ypos)*1.5, 4, 33*1.5)
-		}
-		t2 += 1.0 / 6.0
-		waveSin, waveCos = waveSin*waveCosStep+waveCos*waveSinStep, waveCos*waveCosStep-waveSin*waveSinStep
-	}
-	g.scrollRenderer.DrawAt(screen, state)
-	g.scrollBatch.Flush()
+	g.dnaFrames.DrawSlices(screen, g.scrollChars[:], g.scrollHead, scrolling.DNADrawConfig{
+		SliceWidth: 2, ScaleX: 2, ScaleY: 1.5, OriginY: 156, Y: func(i int) float64 {
+			y := 80.0
+			if t2 > 5*50-float64(i)*.0033 {
+				y = 80 * waveCos
+			}
+			t2 += 1.0 / 6.0
+			waveSin, waveCos = waveSin*waveCosStep+waveCos*waveSinStep, waveCos*waveCosStep-waveSin*waveSinStep
+			return 67 + y
+		}})
 }
 
 func appendTexturedQuad(vertices []ebiten.Vertex, indices []uint16, dstX, dstY, dstWidth, dstHeight, srcX, srcY, srcWidth, srcHeight float32) ([]ebiten.Vertex, []uint16) {
@@ -1211,6 +1067,9 @@ func hslToRGB(h, s, l float64) (float64, float64, float64) {
 
 // Cleanup cleans up resources
 func (g *Game) Cleanup() {
+	if g.dnaFrames != nil {
+		g.dnaFrames.Close()
+	}
 	if g.audioPlayer != nil {
 		_ = g.audioPlayer.Close()
 		g.audioPlayer = nil
