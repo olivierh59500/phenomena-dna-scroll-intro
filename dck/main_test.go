@@ -23,25 +23,17 @@ func TestCharsetIndex(t *testing.T) {
 
 func TestCircularScrollerShift(t *testing.T) {
 	game := NewGame()
-	for i := range game.scrollChars {
-		game.scrollChars[i].Glyph = i
+	game.scrollMessage(3)
+	if game.sliceStream.Head() != 3 {
+		t.Fatalf("head = %d", game.sliceStream.Head())
 	}
-
-	game.shiftLeft()
-	game.addSliceOfChar('A', 3)
-
-	if game.scrollHead != 1 {
-		t.Fatalf("scroll head = %d, want 1", game.scrollHead)
+	token, strip := game.sliceStream.Cursor()
+	if token != 0 || strip != 3 {
+		t.Fatalf("cursor = %d,%d", token, strip)
 	}
-	if got := game.scrollChars[game.scrollHead].Glyph; got != 1 {
-		t.Fatalf("first logical glyph = %d, want 1", got)
-	}
-	tail := (game.scrollHead + len(game.scrollChars) - 1) % len(game.scrollChars)
-	if got, want := game.scrollChars[tail].Glyph, 1; got != want {
-		t.Fatalf("tail glyph = %d, want %d", got, want)
-	}
-	if got, want := game.scrollChars[tail].Slice, 3; got != want {
-		t.Fatalf("tail slice = %d, want %d", got, want)
+	tail := (game.sliceStream.Head() + len(game.sliceStream.Slices()) - 1) % len(game.sliceStream.Slices())
+	if got := game.sliceStream.Slices()[tail]; got.Glyph != 0 || got.Slice != 2 {
+		t.Fatalf("tail = %v", got)
 	}
 }
 

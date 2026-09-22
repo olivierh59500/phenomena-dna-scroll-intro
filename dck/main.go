@@ -180,9 +180,6 @@ const (
 	StateEnd
 )
 
-// ScrollChar represents a character in the 3D scroller
-type ScrollChar = scrolling.DNASlice
-
 // Game represents the main game state
 type Game struct {
 	dnaFrames *scrolling.DNAFrames
@@ -211,8 +208,6 @@ type Game struct {
 
 	// Animation variables
 	t                float64
-	msgIndex         int
-	sliceCount       int
 	pause            bool
 	pauseTime        int
 	scrollSpeed      int
@@ -229,11 +224,8 @@ type Game struct {
 	scrollerRotation float64
 
 	// Scroller data
-	scrollChars    [240]ScrollChar
-	scrollHead     int
-	scrollVertices []ebiten.Vertex
-	scrollIndices  []uint16
-	sineOffsets    [240]float64
+	sliceStream *scrolling.SliceStream
+	sineOffsets [240]float64
 
 	// Audio
 	audioContext *audio.Context
@@ -259,8 +251,6 @@ func NewGame() *Game {
 		rasterbarY:       -40,
 		direction:        1,
 		scrollerRotation: 0,
-		scrollVertices:   make([]ebiten.Vertex, 0, 240*4),
-		scrollIndices:    make([]uint16, 0, 240*6),
 		audioVolume:      1,
 	}
 
@@ -268,6 +258,7 @@ func NewGame() *Game {
 		g.sineOffsets[i] = math.Sin(float64(i)*0.05) * 15
 	}
 
+	g.initSliceStream()
 	return g
 }
 
@@ -557,86 +548,48 @@ func (g *Game) Init() error {
 }
 
 // scrollMessage advances the scroll text
-func (g *Game) scrollMessage(speed int) {
-	for i := 0; i < speed; i++ {
-		ch := scrollMessage[g.msgIndex]
-		isCtrl := ch == '^' || ch == '#' || ch == '&' || ch == '%'
-
-		if isCtrl && g.sliceCount == 0 {
-			// Handle control characters only when starting a new character
-			switch ch {
-			case '^':
-				g.pause = true
-				g.pauseTime = 275
-				g.rotSpeed = -1
-			case '&':
-				g.pause = true
-				g.pauseTime = 275
-				g.rotSpeed = 1
-			case '#':
-				g.pause = true
-				g.pauseTime = 250
-				g.rotSpeed = -1
-			case '%':
-				g.pause = true
-				g.pauseTime = 225
-				g.rotSpeed = -1
-			}
-			g.msgIndex++
-			if g.msgIndex >= len(scrollMessage) {
-				g.msgIndex = 90
-			}
-			// Don't scroll this frame, the pause will take effect
-		} else {
-			// Regular scroll: shift left, add new slice
-			g.shiftLeft()
-			g.addSliceOfChar(ch, g.sliceCount)
-
-			g.sliceCount++
-			if g.sliceCount > 7 {
-				g.sliceCount = 0
-				g.msgIndex++
-				if g.msgIndex >= len(scrollMessage) {
-					g.msgIndex = 90
-				}
-			}
+func (g *Game) initSliceStream() {
+	tokens := make([]scrolling.SliceToken, 0, len(scrollMessage))
+	for _, ch := range scrollMessage {
+		if ch == '^' || ch == '#' || ch == '&' || ch == '%' {
+			tokens = append(tokens, scrolling.SliceToken{Control: string(ch)})
+			continue
 		}
+		glyph, ok := charToFontIndex(ch)
+		if !ok {
+			glyph = 0
+		}
+		tokens = append(tokens, scrolling.SliceToken{Glyph: glyph, Width: 16})
+	}
+	var err error
+	g.sliceStream, err = scrolling.NewSliceStream(scrolling.SliceStreamConfig{Tokens: tokens, Capacity: len(g.sineOffsets), SliceWidth: 2, Repeat: true, LoopStart: 90})
+	if err != nil {
+		panic(err)
 	}
 }
 
-// shiftLeft advances the logical start of the circular scroller buffer.
-func (g *Game) shiftLeft() {
-	g.scrollHead++
-	if g.scrollHead == len(g.scrollChars) {
-		g.scrollHead = 0
-	}
+func (g *Game) scrollMessage(speed int) {
+	g.sliceStream.Step(speed, func(event scrolling.SliceControl) bool {
+		g.pause = true
+		switch event.Name {
+		case "^":
+			g.pauseTime = 275
+			g.rotSpeed = -1
+		case "&":
+			g.pauseTime = 275
+			g.rotSpeed = 1
+		case "#":
+			g.pauseTime = 250
+			g.rotSpeed = -1
+		case "%":
+			g.pauseTime = 225
+			g.rotSpeed = -1
+		}
+		return false
+	})
 }
 
-// addSliceOfChar adds a single slice of a character to the end of the scroll
-func (g *Game) addSliceOfChar(ch byte, slice int) {
-	previous := g.scrollHead + len(g.scrollChars) - 2
-	if previous >= len(g.scrollChars) {
-		previous -= len(g.scrollChars)
-	}
-	tail := g.scrollHead + len(g.scrollChars) - 1
-	if tail >= len(g.scrollChars) {
-		tail -= len(g.scrollChars)
-	}
-	glyph, ok := charToFontIndex(rune(ch))
-	if !ok {
-		glyph = 0
-	}
-
-	g.scrollChars[tail] = ScrollChar{
-		Glyph: glyph,
-		Frame: g.scrollChars[previous].Frame,
-		Slice: slice,
-	}
-}
-
-// renderNextFrames advances the animation frames with a DNA/twist effect
 func (g *Game) renderNextFrames(speed float64) {
-	// Update the base rotation
 	g.scrollerRotation += speed
 	if g.scrollerRotation >= 30 {
 		g.scrollerRotation -= 30
@@ -644,27 +597,15 @@ func (g *Game) renderNextFrames(speed float64) {
 	if g.scrollerRotation < 0 {
 		g.scrollerRotation += 30
 	}
-
-	for i := range g.scrollChars {
-		index := g.scrollHead + i
-		if index >= len(g.scrollChars) {
-			index -= len(g.scrollChars)
-		}
-		newFrame := g.scrollerRotation + g.sineOffsets[i]
-		if newFrame >= 30 {
-			newFrame -= 30
-		} else if newFrame < 0 {
-			newFrame += 30
-		}
-		g.scrollChars[index].Frame = int(newFrame)
+	if err := g.sliceStream.SetFrames(g.scrollerRotation, g.sineOffsets[:], 30); err != nil {
+		panic(err)
 	}
 }
 
-// drawScroller draws the 3D rotating text scroller
 func (g *Game) drawScroller(screen *ebiten.Image) {
 	t2 := g.t
 	waveSin, waveCos := math.Sincos(5*10.50 + g.t/6)
-	g.dnaFrames.DrawSlices(screen, g.scrollChars[:], g.scrollHead, scrolling.DNADrawConfig{
+	g.dnaFrames.DrawSlices(screen, g.sliceStream.Slices(), g.sliceStream.Head(), scrolling.DNADrawConfig{
 		SliceWidth: 2, ScaleX: 2, ScaleY: 1.5, OriginY: 156, Y: func(i int) float64 {
 			y := 80.0
 			if t2 > 5*50-float64(i)*.0033 {
