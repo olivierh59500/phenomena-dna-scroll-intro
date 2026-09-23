@@ -4,6 +4,7 @@ package phenomena
 import (
 	"bytes"
 	"fmt"
+	"github.com/olivierh59500/democonstructionkit/presets"
 	"image"
 	"image/color"
 	originalassets "phenomena-dna-scroll-intro"
@@ -78,7 +79,7 @@ type GradientStop struct {
 
 // Character set for the scroller - must match the font.png layout
 // Font has 45 characters: " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!'?/,.-@"
-const charset = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!'?/,.-@"
+const charset = presets.PhenomenaAlphabet
 
 var waveSinStep, waveCosStep = math.Sincos(1.0 / 36.0)
 
@@ -203,11 +204,16 @@ func (g *Game) loadImages() error {
 	}
 	g.imgFont = ebiten.NewImageFromImage(img)
 	g.imgFontInverted = newInvertedImage(img)
-	for glyph := range g.fontGlyphs {
-		sx := glyph * 16
-		g.fontGlyphs[glyph] = g.imgFont.SubImage(image.Rect(sx, 0, sx+16, 26)).(*ebiten.Image)
-		g.fontGlyphsInverted[glyph] = g.imgFontInverted.SubImage(image.Rect(sx, 0, sx+16, 26)).(*ebiten.Image)
+	glyphs, err := scrolling.GridImages(g.imgFont, image.Pt(16, 26), len(g.fontGlyphs), len(g.fontGlyphs))
+	if err != nil {
+		return err
 	}
+	inverted, err := scrolling.GridImages(g.imgFontInverted, image.Pt(16, 26), len(g.fontGlyphsInverted), len(g.fontGlyphsInverted))
+	if err != nil {
+		return err
+	}
+	copy(g.fontGlyphs[:], glyphs)
+	copy(g.fontGlyphsInverted[:], inverted)
 
 	// Load logo
 	img, _, err = image.Decode(bytes.NewReader(logoData))
@@ -307,37 +313,13 @@ func newInvertedImage(source image.Image) *ebiten.Image {
 }
 
 // charToFontIndex converts a character to its position in the font bitmap
-func charToFontIndex(ch rune) (int, bool) {
-	if ch >= 'a' && ch <= 'z' {
-		ch -= 'a' - 'A'
+var charToFontIndex = func() func(rune) (int, bool) {
+	lookup, err := presets.TileLookup("phenomena-dna-scroll-intro", false)
+	if err != nil {
+		panic(err)
 	}
-	switch {
-	case ch == ' ':
-		return 0, true
-	case ch >= 'A' && ch <= 'Z':
-		return int(ch-'A') + 1, true
-	case ch >= '0' && ch <= '9':
-		return int(ch-'0') + 27, true
-	case ch == '!':
-		return 37, true
-	case ch == '\'':
-		return 38, true
-	case ch == '?':
-		return 39, true
-	case ch == '/':
-		return 40, true
-	case ch == ',':
-		return 41, true
-	case ch == '.':
-		return 42, true
-	case ch == '-':
-		return 43, true
-	case ch == '@':
-		return 44, true
-	default:
-		return 0, false
-	}
-}
+	return lookup
+}()
 
 // makeIntroText creates intro text pages
 func (g *Game) makeIntroText(mode string, backColor color.Color, texts []struct {
