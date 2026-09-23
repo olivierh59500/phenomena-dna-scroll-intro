@@ -1,25 +1,24 @@
 // Package phenomena implements the Phenomena DNA scroll intro remake.
 package phenomena
 
-import originalassets "phenomena-dna-scroll-intro"
-
 import (
 	"bytes"
-
 	"fmt"
-	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"image"
 	"image/color"
+	originalassets "phenomena-dna-scroll-intro"
+
+	"github.com/olivierh59500/democonstructionkit/scrolling"
+	"github.com/olivierh59500/democonstructionkit/sound"
+
 	_ "image/png"
-	"io"
 	"log"
 	"math"
-	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+
 	audio "github.com/olivierh59500/democonstructionkit/sound/output"
-	"github.com/olivierh59500/ym-player/pkg/stsound"
 )
 
 const (
@@ -45,83 +44,7 @@ var logoData = originalassets.
 var photonData = originalassets.
 	DCKAssetPhotonData()
 
-var musicData = originalassets.
-
-	// YMPlayer wraps the YM player for Ebiten audio
-	DCKAssetMusicData()
-
-type YMPlayer struct {
-	player *stsound.StSound
-	buffer []int16
-	mutex  sync.Mutex
-	loop   bool
-}
-
-// NewYMPlayer creates a new YM player instance
-func NewYMPlayer(data []byte, sampleRate int, loop bool) (*YMPlayer, error) {
-	player := stsound.CreateWithRate(sampleRate)
-
-	if err := player.LoadMemory(data); err != nil {
-		player.Destroy()
-		return nil, fmt.Errorf("failed to load YM data: %w", err)
-	}
-
-	player.SetLoopMode(loop)
-
-	return &YMPlayer{
-		player: player,
-		buffer: make([]int16, 4096),
-		loop:   loop,
-	}, nil
-}
-
-// Read implements io.Reader for audio streaming
-func (y *YMPlayer) Read(p []byte) (n int, err error) {
-	y.mutex.Lock()
-	defer y.mutex.Unlock()
-
-	samplesNeeded := len(p) / 4
-	processed := 0
-	for processed < samplesNeeded {
-		chunkSize := samplesNeeded - processed
-		if chunkSize > len(y.buffer) {
-			chunkSize = len(y.buffer)
-		}
-
-		if !y.player.Compute(y.buffer[:chunkSize], chunkSize) {
-			if !y.loop {
-				clear(p[processed*4 : samplesNeeded*4])
-				err = io.EOF
-				break
-			}
-		}
-
-		for i := 0; i < chunkSize; i++ {
-			sample := y.buffer[i] / 2
-			offset := (processed + i) * 4
-			p[offset] = byte(sample)
-			p[offset+1] = byte(sample >> 8)
-			p[offset+2] = byte(sample)
-			p[offset+3] = byte(sample >> 8)
-		}
-
-		processed += chunkSize
-	}
-
-	return samplesNeeded * 4, err
-}
-
-// Close releases resources
-func (y *YMPlayer) Close() error {
-	y.mutex.Lock()
-	defer y.mutex.Unlock()
-
-	if y.player != nil {
-		y.player.Destroy()
-		y.player = nil
-	}
-	return nil
-}
+var musicData = originalassets.DCKAssetMusicData()
 
 // Color definitions for gradients
 var (
@@ -230,7 +153,7 @@ type Game struct {
 	// Audio
 	audioContext *audio.Context
 	audioPlayer  *audio.Player
-	ymPlayer     *YMPlayer
+	musicStream  *sound.Stream
 	audioReady   bool
 	audioVolume  float64
 
@@ -499,19 +422,19 @@ func (g *Game) initAudio() error {
 
 	var err error
 
-	// Create YM player
-	g.ymPlayer, err = NewYMPlayer(musicData, sampleRate, true)
+	// Let DCK choose and configure the music decoder.
+	g.musicStream, err = sound.Open("music.ym", musicData, sound.Options{SampleRate: sampleRate, Loop: true, PCMFormat: sound.PCM16, Gain: 0.5})
 	if err != nil {
-		return fmt.Errorf("failed to create YM player: %w", err)
+		return fmt.Errorf("failed to open music: %w", err)
 	}
 
 	// Create audio player
-	g.audioPlayer, err = g.audioContext.NewPlayer(g.ymPlayer)
+	g.audioPlayer, err = g.audioContext.NewPlayer(g.musicStream)
 	if err != nil {
-		if closeErr := g.ymPlayer.Close(); closeErr != nil {
-			log.Printf("Failed to close YM player: %v", closeErr)
+		if closeErr := g.musicStream.Close(); closeErr != nil {
+			log.Printf("Failed to close music stream: %v", closeErr)
 		}
-		g.ymPlayer = nil
+		g.musicStream = nil
 		return fmt.Errorf("failed to create audio player: %w", err)
 	}
 
@@ -1015,8 +938,8 @@ func (g *Game) Cleanup() {
 		_ = g.audioPlayer.Close()
 		g.audioPlayer = nil
 	}
-	if g.ymPlayer != nil {
-		_ = g.ymPlayer.Close()
-		g.ymPlayer = nil
+	if g.musicStream != nil {
+		_ = g.musicStream.Close()
+		g.musicStream = nil
 	}
 }
