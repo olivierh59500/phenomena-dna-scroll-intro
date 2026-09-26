@@ -9,6 +9,7 @@ import (
 	"image/color"
 	originalassets "phenomena-dna-scroll-intro"
 
+	"github.com/olivierh59500/democonstructionkit/motion"
 	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"github.com/olivierh59500/democonstructionkit/sound"
 
@@ -150,6 +151,8 @@ type Game struct {
 	// Scroller data
 	sliceStream *scrolling.SliceStream
 	sineOffsets [240]float64
+	rowWave     *motion.RecurrentRowWave
+	dnaDraw     scrolling.DNADrawConfig
 
 	// Audio
 	audioContext *audio.Context
@@ -183,6 +186,12 @@ func NewGame() *Game {
 	}
 
 	g.initSliceStream()
+	wave, err := motion.NewRecurrentRowWave(presets.PhenomenaDNARows())
+	if err != nil {
+		panic(err)
+	}
+	g.rowWave = wave
+	g.dnaDraw = scrolling.DNADrawConfig{SliceWidth: 2, ScaleX: 2, ScaleY: 1.5, OriginY: 156, Y: wave.At}
 	return g
 }
 
@@ -508,18 +517,10 @@ func (g *Game) renderNextFrames(speed float64) {
 }
 
 func (g *Game) drawScroller(screen *ebiten.Image) {
-	t2 := g.t
-	waveSin, waveCos := math.Sincos(5*10.50 + g.t/6)
-	g.dnaFrames.DrawSlices(screen, g.sliceStream.Slices(), g.sliceStream.Head(), scrolling.DNADrawConfig{
-		SliceWidth: 2, ScaleX: 2, ScaleY: 1.5, OriginY: 156, Y: func(i int) float64 {
-			y := 80.0
-			if t2 > 5*50-float64(i)*.0033 {
-				y = 80 * waveCos
-			}
-			t2 += 1.0 / 6.0
-			waveSin, waveCos = waveSin*waveCosStep+waveCos*waveSinStep, waveCos*waveCosStep-waveSin*waveSinStep
-			return 67 + y
-		}})
+	if err := g.rowWave.Begin(g.t); err != nil {
+		panic(err)
+	}
+	g.dnaFrames.DrawSlices(screen, g.sliceStream.Slices(), g.sliceStream.Head(), g.dnaDraw)
 }
 
 func appendTexturedQuad(vertices []ebiten.Vertex, indices []uint16, dstX, dstY, dstWidth, dstHeight, srcX, srcY, srcWidth, srcHeight float32) ([]ebiten.Vertex, []uint16) {
