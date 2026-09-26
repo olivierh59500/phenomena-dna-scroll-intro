@@ -14,6 +14,7 @@ import (
 	"github.com/olivierh59500/democonstructionkit/palette"
 	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"github.com/olivierh59500/democonstructionkit/sound"
+	"github.com/olivierh59500/democonstructionkit/timeline"
 
 	_ "image/png"
 	"log"
@@ -60,18 +61,18 @@ const scrollMessage = `           THIS IS IMPOSSIBLE!            WHAT IS?       
 type DemoState int
 
 const (
-	StateTextPage1 DemoState = iota
-	StateTextPage2
-	StateShowLogo
-	StateShowUpperRasterbar
-	StateShowLowerRasterbar
-	StateDropPhoton
-	StatePhotonFadeToRed
-	StateMainDemo
-	StateHideLogo
-	StateHideLowerRasterbar
-	StateHideUpperRasterbar
-	StateEnd
+	StateTextPage1          DemoState = presets.PhenomenaTextPage1
+	StateTextPage2          DemoState = presets.PhenomenaTextPage2
+	StateShowLogo           DemoState = presets.PhenomenaShowLogo
+	StateShowUpperRasterbar DemoState = presets.PhenomenaShowUpperRaster
+	StateShowLowerRasterbar DemoState = presets.PhenomenaShowLowerRaster
+	StateDropPhoton         DemoState = presets.PhenomenaDropPhoton
+	StatePhotonFadeToRed    DemoState = presets.PhenomenaPhotonFade
+	StateMainDemo           DemoState = presets.PhenomenaMain
+	StateHideLogo           DemoState = presets.PhenomenaHideLogo
+	StateHideLowerRasterbar DemoState = presets.PhenomenaHideLowerRaster
+	StateHideUpperRasterbar DemoState = presets.PhenomenaHideUpperRaster
+	StateEnd                DemoState = presets.PhenomenaEnd
 )
 
 // Game represents the main game state
@@ -81,6 +82,7 @@ type Game struct {
 	state       DemoState
 	initialized bool
 	finished    bool
+	director    *timeline.ScalarStages
 
 	// Images
 	imgRasterbar       *ebiten.Image
@@ -149,6 +151,10 @@ func NewGame() *Game {
 	}
 	g.rowWave = wave
 	g.photonMotion, err = motion.NewGravityBounce(presets.PhenomenaPhotonBounce())
+	if err != nil {
+		panic(err)
+	}
+	g.director, err = timeline.NewScalarStages(presets.PhenomenaPresentation(int(StateTextPage1)))
 	if err != nil {
 		panic(err)
 	}
@@ -431,75 +437,21 @@ func (g *Game) Update() error {
 	}
 	g.touchIDs = ebiten.AppendTouchIDs(g.touchIDs[:0])
 
-	// Handle different demo states
+	// Stage-specific simulations run before the reusable threshold director.
 	switch g.state {
-	case StateTextPage1:
-		g.rasterbarY += 1.5
-		if g.rasterbarY >= 340 {
-			g.rasterbarY = 0
-			g.percent = 0
-			g.state = StateTextPage2
-		}
-
-	case StateTextPage2:
-		g.percent += g.direction * 1
-		if g.percent > 200 {
-			g.direction = -1
-			g.percent = 100
-		}
-		if g.percent <= 0 && g.direction == -1 {
-			g.percent = 0
-			g.state = StateShowLogo
-		}
-
-	case StateShowLogo:
-		g.percent += 4
-		if g.percent >= 200 {
-			g.percent = 0
-			g.state = StateShowUpperRasterbar
-		}
-
-	case StateShowUpperRasterbar:
-		g.percent += 4
-		if g.percent >= 100 {
-			g.percent = 0
-			g.state = StateShowLowerRasterbar
-		}
-
-	case StateShowLowerRasterbar:
-		g.percent += 4
-		if g.percent >= 100 {
-			g.percent = 0
-			g.state = StateDropPhoton
-		}
-
 	case StateDropPhoton:
 		if g.photonMotion.Step() {
-			g.percent = 100
-			g.state = StatePhotonFadeToRed
+			g.director.Signal("photon-landed")
 		}
-
-	case StatePhotonFadeToRed:
-		g.percent -= 4
-		if g.percent < 50 {
-			g.percent = 0
-			g.state = StateMainDemo
-		}
-
 	case StateMainDemo:
-		// Update animations
 		g.color += 1.0 / 3.0
 		if g.color > 360 {
 			g.color = 0
 		}
-
-		// Advance text, control cues and the independent film rotation once.
 		if err := g.sliceProgram.Step(); err != nil {
 			return err
 		}
 		g.t += 0.30
-
-		// Handle black rect reveal
 		if g.blackRectShow {
 			g.blackRectWidth -= 8
 			if g.blackRectWidth < 0 {
@@ -507,47 +459,22 @@ func (g *Game) Update() error {
 				g.blackRectShow = false
 			}
 		}
-
-		// Check for finish
 		if g.finished {
-			g.percent = 50
-			g.direction = 1
-			g.state = StateHideLogo
+			g.director.Signal("finish")
 		}
-
-	case StateHideLogo:
-		if g.direction > 0 {
-			g.percent += g.direction * 4
-			if g.percent > 100 {
-				g.direction = -1
-			}
-		} else {
-			g.percent += g.direction * 4
-			if g.percent < 0 {
-				g.percent = 100
-				g.direction = -1
-				g.state = StateHideLowerRasterbar
-			}
-		}
-
-	case StateHideLowerRasterbar:
-		g.percent += g.direction * 4
-		if g.percent < 0 {
-			g.direction = -1
-			g.percent = 100
-			g.state = StateHideUpperRasterbar
-		}
-
-	case StateHideUpperRasterbar:
-		g.percent += g.direction * 4
-		if g.percent < 0 {
-			g.state = StateEnd
-		}
-
 	case StateEnd:
-		// Demo finished
 		return nil
 	}
+	previousStage := g.state
+	g.director.Step()
+	pose := g.director.State()
+	g.state = DemoState(pose.Stage)
+	if previousStage == StateTextPage1 {
+		g.rasterbarY = pose.Value
+	} else {
+		g.percent = pose.Value
+	}
+	g.direction = pose.Direction
 
 	// A desktop click or Android touch starts the outro.
 	if (ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) || len(g.touchIDs) > 0) && g.state == StateMainDemo {
