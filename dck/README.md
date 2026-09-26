@@ -13,6 +13,11 @@ provides the configured stereo PCM format. The demo keeps its playback level and
 
 `scrolling.NewDNAFrames` constructs the silver front, purple back and central raster from the shared gradient materials. `SliceProgram` owns the two-pixel circular transport, control-character pauses, rotation and loop point; `RecurrentRowWave` owns the strip baseline. `ScalarStages` drives the introduction and exit thresholds. Multiscreen uses the same DCK recipes. The artwork, message, music and layer order remain here.
 
+The two opening text pages now use `scrolling.BitmapPage`. Their normal and
+inverted glyph banks share one editable alphabet and the same pen/scale preset;
+the authored lines and Y positions remain in this demo. DCK compiles all glyph
+positions once and owns each retained page image, which is released at cleanup.
+
 For a new scroll, register `DNA.Mode()` in `scrolling.New(Config{Modes: ...})`. Each font supplies its own metrics; filmstrips adapt to glyph dimensions, including odd widths and proportional or mixed fonts. Rotation speed, phase, twist wavelength/amplitude, vertical waves and face colors are configurable. Use `{shape:dna}` or a timed mode sequence.
 
 See the [DCK effect configuration guide](../../../lib/democonstructionkit/docs/EFFECT_OPTIONS.md) for the shared API and examples.

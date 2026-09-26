@@ -94,8 +94,8 @@ type Game struct {
 	imgPhotonMask      *ebiten.Image
 	imgMiddle          *ebiten.Image
 	rasterGradient     *ebiten.Image
-	imgTextPage1       *ebiten.Image
-	imgTextPage2       *ebiten.Image
+	imgTextPage1       *scrolling.BitmapPage
+	imgTextPage2       *scrolling.BitmapPage
 	fontGlyphs         [len(charset)]*ebiten.Image
 	fontGlyphsInverted [len(charset)]*ebiten.Image
 
@@ -241,67 +241,31 @@ var charToFontIndex = func() func(rune) (int, bool) {
 	return lookup
 }()
 
-// makeIntroText creates intro text pages
-func (g *Game) makeIntroText(mode string, backColor color.Color, texts []struct {
-	Y    int
-	Text string
-}) *ebiten.Image {
-	img := ebiten.NewImage(640, 480)
-
-	if backColor != nil {
-		img.Fill(backColor)
-	}
-
-	for _, t := range texts {
-		x := 48
-		for _, ch := range t.Text {
-			idx, found := charToFontIndex(ch)
-
-			if found {
-				op := &ebiten.DrawImageOptions{}
-				op.GeoM.Scale(2, 2)
-				op.GeoM.Translate(float64(x), float64(t.Y))
-
-				glyph := g.fontGlyphs[idx]
-				if mode == "xor" {
-					glyph = g.fontGlyphsInverted[idx]
-				}
-
-				img.DrawImage(glyph, op)
-			}
-			x += 32
-		}
-	}
-
-	return img
-}
-
 // initTextPages initializes the intro text pages
-func (g *Game) initTextPages() {
+func (g *Game) initTextPages() error {
 	// Text page 1
-	texts1 := []struct {
-		Y    int
-		Text string
-	}{
-		{18, "   FOR HOT VHS"},
-		{75, "  AND SOFTWARE"},
-		{133, "SWAPPING, CONTACT"},
-		{219, " THE PUNISHER "},
-		{291, "      AT..."},
+	texts1 := []scrolling.BitmapPageLine{
+		presets.PhenomenaIntroLine(18, "   FOR HOT VHS"),
+		presets.PhenomenaIntroLine(75, "  AND SOFTWARE"),
+		presets.PhenomenaIntroLine(133, "SWAPPING, CONTACT"),
+		presets.PhenomenaIntroLine(219, " THE PUNISHER "),
+		presets.PhenomenaIntroLine(291, "      AT..."),
 	}
-	g.imgTextPage1 = g.makeIntroText("xor", color.Black, texts1)
+	var err error
+	g.imgTextPage1, err = scrolling.NewBitmapPage(presets.PhenomenaIntroPage(g.fontGlyphsInverted[:], texts1, color.Black))
+	if err != nil {
+		return err
+	}
 
 	// Text page 2
-	texts2 := []struct {
-		Y    int
-		Text string
-	}{
-		{78, "    PHENOMENA"},
-		{158, "   SKALDEV. 69"},
-		{238, "  16142 BROMMA"},
-		{334, "     SWEDEN!"},
+	texts2 := []scrolling.BitmapPageLine{
+		presets.PhenomenaIntroLine(78, "    PHENOMENA"),
+		presets.PhenomenaIntroLine(158, "   SKALDEV. 69"),
+		presets.PhenomenaIntroLine(238, "  16142 BROMMA"),
+		presets.PhenomenaIntroLine(334, "     SWEDEN!"),
 	}
-	g.imgTextPage2 = g.makeIntroText("source-over", nil, texts2)
+	g.imgTextPage2, err = scrolling.NewBitmapPage(presets.PhenomenaIntroPage(g.fontGlyphs[:], texts2, nil))
+	return err
 }
 
 // initCharacterFrames creates all animation frames for the 3D rotating characters
@@ -371,7 +335,9 @@ func (g *Game) Init() error {
 	}
 
 	// Initialize text pages
-	g.initTextPages()
+	if err := g.initTextPages(); err != nil {
+		return err
+	}
 
 	// Initialize character animation frames
 	if err := g.initCharacterFrames(); err != nil {
@@ -497,7 +463,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		var op ebiten.DrawImageOptions
 		op.GeoM.Translate(0, g.rasterbarY)
 		screen.DrawImage(g.imgRasterbar, &op)
-		screen.DrawImage(g.imgTextPage1, nil)
+		g.imgTextPage1.Draw(screen)
 
 	case StateTextPage2:
 		screen.Fill(color.Black)
@@ -507,7 +473,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			brightness = 2 - brightness
 		}
 		op.ColorScale.Scale(float32(brightness), float32(brightness), float32(brightness), 1)
-		screen.DrawImage(g.imgTextPage2, &op)
+		screen.DrawImage(g.imgTextPage2.Image(), &op)
 
 	case StateShowLogo:
 		screen.Fill(color.RGBA{0x00, 0x01, 0x11, 0xFF})
@@ -644,6 +610,12 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 // Cleanup cleans up resources
 func (g *Game) Cleanup() {
+	if g.imgTextPage1 != nil {
+		g.imgTextPage1.Close()
+	}
+	if g.imgTextPage2 != nil {
+		g.imgTextPage2.Close()
+	}
 	if g.dnaFrames != nil {
 		g.dnaFrames.Close()
 	}
