@@ -104,7 +104,6 @@ type Game struct {
 
 	// Animation variables
 	t              float64
-	color          float64
 	percent        float64
 	blackRectWidth float64
 	blackRectShow  bool
@@ -116,6 +115,7 @@ type Game struct {
 	rowWave      *motion.RecurrentRowWave
 	dnaDraw      scrolling.DNADrawConfig
 	photonMotion *motion.GravityBounce
+	hueMotion    *motion.WrapBank
 
 	// Audio
 	audioContext *audio.Context
@@ -151,6 +151,10 @@ func NewGame() *Game {
 	}
 	g.rowWave = wave
 	g.photonMotion, err = motion.NewGravityBounce(presets.PhenomenaPhotonBounce())
+	if err != nil {
+		panic(err)
+	}
+	g.hueMotion, err = motion.NewWrapBank(presets.PhenomenaPhotonHueCycle())
 	if err != nil {
 		panic(err)
 	}
@@ -444,10 +448,7 @@ func (g *Game) Update() error {
 			g.director.Signal("photon-landed")
 		}
 	case StateMainDemo:
-		g.color += 1.0 / 3.0
-		if g.color > 360 {
-			g.color = 0
-		}
+		g.hueMotion.Step()
 		if err := g.sliceProgram.Step(); err != nil {
 			return err
 		}
@@ -581,7 +582,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		screen.DrawImage(g.rasterGradient, &op)
 
 		op = ebiten.DrawImageOptions{}
-		hue := g.color / 360.0
+		hue := g.hueMotion.At(0) / 360.0
 		r, g2, b := palette.HSLToRGB(hue, 1.0, 0.5)
 		op.ColorScale.Scale(float32(r), float32(g2), float32(b), 1)
 		op.GeoM.Translate(285, 445)
