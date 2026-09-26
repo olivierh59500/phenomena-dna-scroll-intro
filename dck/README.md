@@ -12,6 +12,10 @@ provides the configured stereo PCM format. The demo keeps its playback level and
 ## Shared DNA scroll
 
 `scrolling.NewDNAFrames` constructs the silver front, purple back and central raster from the shared gradient materials. `SliceProgram` owns the two-pixel circular transport, control-character pauses, rotation and loop point; `RecurrentRowWave` owns the strip baseline. `ScalarStages` drives the introduction and exit thresholds. Multiscreen uses the same DCK recipes. The artwork, message, music and layer order remain here.
+The row wave now advances its own editable scene clock only during the main
+screen. Its 0.30-step timing and draw-order recurrence no longer need a local
+float accumulator. The opt-in GPU comparator checks the independent reference
+clock and every rendered strip at eleven frames through 48,000.
 
 The two opening text pages now use `scrolling.BitmapPage`. Their normal and
 inverted glyph banks share one editable alphabet and the same pen/scale preset;

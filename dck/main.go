@@ -104,7 +104,6 @@ type Game struct {
 	cnvFrames *ebiten.Image // All character animation frames
 
 	// Animation variables
-	t              float64
 	blackRectWidth float64
 	blackRectShow  bool
 
@@ -359,7 +358,7 @@ func (g *Game) Init() error {
 }
 
 func (g *Game) drawScroller(screen *ebiten.Image) {
-	if err := g.rowWave.Begin(g.t); err != nil {
+	if err := g.rowWave.BeginFrame(); err != nil {
 		panic(err)
 	}
 	g.sliceProgram.Draw(screen, g.dnaFrames, g.dnaDraw)
@@ -423,7 +422,9 @@ func (g *Game) Update() error {
 		if err := g.sliceProgram.Step(); err != nil {
 			return err
 		}
-		g.t += 0.30
+		if err := g.rowWave.AdvanceFrame(); err != nil {
+			return err
+		}
 		if g.blackRectShow {
 			g.blackRectWidth -= 8
 			if g.blackRectWidth < 0 {
