@@ -20,8 +20,10 @@ positions once and owns each retained page image, which is released at cleanup.
 The opening and closing reveal now use `composite.ScalarStagePainter`. Ordered
 image passes, stage thresholds, scalar brightness/alpha formulas and the moving
 photon placement are editable DCK data. This demo keeps its artwork, input,
-music and the live main-scene scroller. The renderer draws directly into the
-existing screen; it allocates no additional full-screen surface.
+music and the live main-scene scroller. The HSL-colored main photon now uses the
+same material program, before the scroller and final black mask. It draws
+directly into the existing screen; it allocates no additional full-screen
+surface.
 
 For a new scroll, register `DNA.Mode()` in `scrolling.New(Config{Modes: ...})`. Each font supplies its own metrics; filmstrips adapt to glyph dimensions, including odd widths and proportional or mixed fonts. Rotation speed, phase, twist wavelength/amplitude, vertical waves and face colors are configurable. Use `{shape:dna}` or a timed mode sequence.
 

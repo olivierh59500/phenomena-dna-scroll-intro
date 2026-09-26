@@ -337,7 +337,7 @@ func (g *Game) Init() error {
 	presentation, err := composite.NewScalarStagePainter(presets.PhenomenaStageMaterials(g.director, presets.PhenomenaStageImages{
 		RasterBar: g.imgRasterbar, Page1: g.imgTextPage1.Image(), Page2: g.imgTextPage2.Image(),
 		Logo: g.imgLogo, LogoMask: g.imgLogoMask, Middle: g.imgMiddle,
-		Raster: g.rasterGradient, Photon: g.imgPhoton,
+		Raster: g.rasterGradient, Photon: g.imgPhoton, PhotonMask: g.imgPhotonMask,
 	}))
 	if err != nil {
 		return err
@@ -449,44 +449,24 @@ func (g *Game) Update() error {
 	return nil
 }
 
-// Draw draws the authored main screen or the shared staged materials.
+// Draw composes shared stage materials before the live DNA scroller and mask.
 func (g *Game) Draw(screen *ebiten.Image) {
 	if !g.initialized {
 		return
 	}
+	secondary := g.photonMotion.Position()
+	if g.state == StateMainDemo {
+		secondary = g.hueMotion.At(0) / 360.0
+	}
+	g.presentation.Draw(screen, secondary)
 	if g.state != StateMainDemo {
-		g.presentation.Draw(screen, g.photonMotion.Position())
 		return
 	}
-
-	screen.Fill(color.Black)
-	drawImageAt(screen, g.imgMiddle, 0, 130)
-	screen.DrawImage(g.imgLogo, nil)
-
-	var op ebiten.DrawImageOptions
-	op.GeoM.Translate(0, 129)
-	screen.DrawImage(g.rasterGradient, &op)
-	op.GeoM.Reset()
-	op.GeoM.Translate(0, 430)
-	screen.DrawImage(g.rasterGradient, &op)
-
-	op = ebiten.DrawImageOptions{}
-	hue := g.hueMotion.At(0) / 360.0
-	r, green, b := palette.HSLToRGB(hue, 1.0, 0.5)
-	op.ColorScale.Scale(float32(r), float32(green), float32(b), 1)
-	op.GeoM.Translate(285, 445)
-	screen.DrawImage(g.imgPhotonMask, &op)
 
 	g.drawScroller(screen)
 	if g.blackRectShow {
 		vector.FillRect(screen, 0, 375, float32(g.blackRectWidth), 55, color.RGBA{0x00, 0x01, 0x11, 0xFF}, false)
 	}
-}
-
-func drawImageAt(dst, src *ebiten.Image, x, y int) {
-	var op ebiten.DrawImageOptions
-	op.GeoM.Translate(float64(x), float64(y))
-	dst.DrawImage(src, &op)
 }
 
 // Layout returns the screen dimensions
