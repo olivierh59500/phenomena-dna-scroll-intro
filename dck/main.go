@@ -134,9 +134,6 @@ type Game struct {
 	percent        float64
 	blackRectWidth float64
 	blackRectShow  bool
-	photonY        float64
-	photonGravity  float64
-	photonBounce   float64
 	rasterbarY     float64
 	direction      float64
 
@@ -144,6 +141,7 @@ type Game struct {
 	sliceProgram *scrolling.SliceProgram
 	rowWave      *motion.RecurrentRowWave
 	dnaDraw      scrolling.DNADrawConfig
+	photonMotion *motion.GravityBounce
 
 	// Audio
 	audioContext *audio.Context
@@ -161,8 +159,6 @@ func NewGame() *Game {
 		state:          StateTextPage1,
 		blackRectWidth: 640,
 		blackRectShow:  true,
-		photonY:        184,
-		photonBounce:   -9.50,
 		rasterbarY:     -40,
 		direction:      1,
 		audioVolume:    1,
@@ -180,6 +176,10 @@ func NewGame() *Game {
 		panic(err)
 	}
 	g.rowWave = wave
+	g.photonMotion, err = motion.NewGravityBounce(presets.PhenomenaPhotonBounce())
+	if err != nil {
+		panic(err)
+	}
 	g.dnaDraw = scrolling.DNADrawConfig{SliceWidth: 2, ScaleX: 2, ScaleY: 1.5, OriginY: 156, Y: wave.At}
 	return g
 }
@@ -546,13 +546,7 @@ func (g *Game) Update() error {
 		}
 
 	case StateDropPhoton:
-		g.photonGravity += 0.30
-		g.photonY += g.photonGravity
-		if g.photonY > 445 {
-			g.photonGravity = g.photonBounce
-			g.photonBounce *= 0.70
-		}
-		if g.photonBounce >= -0.70 {
+		if g.photonMotion.Step() {
 			g.percent = 100
 			g.state = StatePhotonFadeToRed
 		}
@@ -712,7 +706,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				screen.DrawImage(g.imgPhoton, &op)
 			} else {
 				var op ebiten.DrawImageOptions
-				op.GeoM.Translate(285, g.photonY)
+				op.GeoM.Translate(285, g.photonMotion.Position())
 				screen.DrawImage(g.imgPhoton, &op)
 			}
 		}
