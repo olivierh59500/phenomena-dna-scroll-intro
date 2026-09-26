@@ -15,7 +15,6 @@ import (
 
 	_ "image/png"
 	"log"
-	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -82,8 +81,6 @@ type GradientStop struct {
 // Font has 45 characters: " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!'?/,.-@"
 const charset = presets.PhenomenaAlphabet
 
-var waveSinStep, waveCosStep = math.Sincos(1.0 / 36.0)
-
 // Main scrolling message
 const scrollMessage = `           THIS IS IMPOSSIBLE!            WHAT IS?               THIS IS!!!                    ...SO, ANOTHER DEMO FROM PHENOMENA HAS REACHED YOU...    THIS TIME WITH CODING BY                PHOTON!                ^  RASTA MUSIC BY                    FIREFOX!                &    AND SUPER GFX BY                       TERMINATOR               #  ...SO, SLAYER! HOW DO YOU LIKE @MY@ SCROLLER?  IT'S MUCH IMPOSSIBLER THAN YOURS!    ...   SO DE SO!          DOES ANYONE HAVE A PROGRAM CALLED 'PAGE RENDER 3D'? THEN CONTACT OUR NEW GFX ARTIST AT          0492-41027               % AND ASK FOR MIKAEL. NEWS NEWS NEWS NEWS   !!! LOOK OUT FOR PHENOMENA'S NEW DISK MAG CALLED ' TRANSMISSION ' ! ! ! ! IT'S A MAG ESPECIALLY MADE FOR ALL YOU CODERS OUT THERE, COMPLETE WITH CODER / DEMO / CRACK TOP-TEN,ARTICLES ABOUT CODING / CRACKING, AND SOURCES, ETC,ETC...         HERE'S MY TOP-FIVE DEMO GROUPS 1. SCOOPEX  -SLAYER IS WORKING HARD AND HIS M.H. DEMO IS STILL UNBEATEN-  ...  2. CRYPTOBURNERS  -NICE MD 2 BUT SLOOOW VECTORS-  ... 3. RSI/PARADOX  -NICE DEMOS LATELY, EXCEPT FOR THE 'FOLLOW ME' CRAP-  ...  4. KEFRENS  -ALL YOUR LATEST DEMOS HAVE BEEN PROFESSIONAL!-  ...  5. THE LINK  -ALWAYS COOL IDEAS,GIVE US SOME MORE-  ...  OF COURSE, PHENOMENA IS EXCLUDED FROM THIS LIST...        NOW OVER TO SOME INTERNAL GREETS...  @     BIG 2A-FINISH YOUR DEMO AND BUY AN A500!   @   CORE-GET YOUR HANDS ON A WORKING AMIGA!   @   DANKO-GET BUSY!   @   KLUTTAS O SPIRIT-WAKE UP FROM YOUR COMA!!!!   @   RAVE-SAME TO YOU!       ...     AND NOW, TIME FOR SOME OTHER GREETS... THEY GO TO --- CONAN/TPL-MAKE A GOOD DEMO AND JOIN ANOTHER GROUP!   @   KALLE BALLE/TSL - EVER THOUGHT ABOUT CHANGING YOUR NAME????   @   HAVOK/ECSTASY-JOIN US! I'M JUST A PHONECALL AWAY - 0381-11344 @   MAHONEY/NS-TRY TAKING SOME IDEAS FROM NT 1.2!  @   UNCLE TOM/RAZOR-STOP DRAWING AND DO SOME MUSIC @   SLAYER/SCX-AND ALL OTHER GOOD CODERS-CALL ME FOR SOME COOL TECH-TALK    0381-11344   ZEUS/ADEPT-GOOD LUCK AND CODE HARD!       ---     NOW I DON'T HAVE VERY MUCH ELSE TO SAY, EXCEPT....                    BYE!             @@@@@@@@@@@@@                `
 
@@ -132,27 +129,21 @@ type Game struct {
 	cnvFrames *ebiten.Image // All character animation frames
 
 	// Animation variables
-	t                float64
-	pause            bool
-	pauseTime        int
-	scrollSpeed      int
-	rotSpeed         float64
-	color            float64
-	percent          float64
-	blackRectWidth   float64
-	blackRectShow    bool
-	photonY          float64
-	photonGravity    float64
-	photonBounce     float64
-	rasterbarY       float64
-	direction        float64
-	scrollerRotation float64
+	t              float64
+	color          float64
+	percent        float64
+	blackRectWidth float64
+	blackRectShow  bool
+	photonY        float64
+	photonGravity  float64
+	photonBounce   float64
+	rasterbarY     float64
+	direction      float64
 
 	// Scroller data
-	sliceStream *scrolling.SliceStream
-	sineOffsets [240]float64
-	rowWave     *motion.RecurrentRowWave
-	dnaDraw     scrolling.DNADrawConfig
+	sliceProgram *scrolling.SliceProgram
+	rowWave      *motion.RecurrentRowWave
+	dnaDraw      scrolling.DNADrawConfig
 
 	// Audio
 	audioContext *audio.Context
@@ -167,25 +158,23 @@ type Game struct {
 // NewGame creates a new game instance
 func NewGame() *Game {
 	g := &Game{
-		state:            StateTextPage1,
-		pauseTime:        250,
-		rotSpeed:         0.35,
-		scrollSpeed:      1,
-		blackRectWidth:   640,
-		blackRectShow:    true,
-		photonY:          184,
-		photonBounce:     -9.50,
-		rasterbarY:       -40,
-		direction:        1,
-		scrollerRotation: 0,
-		audioVolume:      1,
+		state:          StateTextPage1,
+		blackRectWidth: 640,
+		blackRectShow:  true,
+		photonY:        184,
+		photonBounce:   -9.50,
+		rasterbarY:     -40,
+		direction:      1,
+		audioVolume:    1,
 	}
-
-	for i := range g.sineOffsets {
-		g.sineOffsets[i] = math.Sin(float64(i)*0.05) * 15
+	programConfig, err := presets.PhenomenaDNAProgram(scrollMessage, charToFontIndex)
+	if err != nil {
+		panic(err)
 	}
-
-	g.initSliceStream()
+	g.sliceProgram, err = scrolling.NewSliceProgram(programConfig)
+	if err != nil {
+		panic(err)
+	}
 	wave, err := motion.NewRecurrentRowWave(presets.PhenomenaDNARows())
 	if err != nil {
 		panic(err)
@@ -452,75 +441,19 @@ func (g *Game) Init() error {
 	g.initCharacterFrames()
 
 	// Bring message to the start
-	for i := 0; i < 320; i++ {
-		g.scrollMessage(1)
-		g.renderNextFrames(g.rotSpeed)
+	if err := g.sliceProgram.Warmup(320, 1); err != nil {
+		return err
 	}
 
 	g.initialized = true
 	return nil
 }
 
-// scrollMessage advances the scroll text
-func (g *Game) initSliceStream() {
-	tokens := make([]scrolling.SliceToken, 0, len(scrollMessage))
-	for _, ch := range scrollMessage {
-		if ch == '^' || ch == '#' || ch == '&' || ch == '%' {
-			tokens = append(tokens, scrolling.SliceToken{Control: string(ch)})
-			continue
-		}
-		glyph, ok := charToFontIndex(ch)
-		if !ok {
-			glyph = 0
-		}
-		tokens = append(tokens, scrolling.SliceToken{Glyph: glyph, Width: 16})
-	}
-	var err error
-	g.sliceStream, err = scrolling.NewSliceStream(scrolling.SliceStreamConfig{Tokens: tokens, Capacity: len(g.sineOffsets), SliceWidth: 2, Repeat: true, LoopStart: 90})
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (g *Game) scrollMessage(speed int) {
-	g.sliceStream.Step(speed, func(event scrolling.SliceControl) bool {
-		g.pause = true
-		switch event.Name {
-		case "^":
-			g.pauseTime = 275
-			g.rotSpeed = -1
-		case "&":
-			g.pauseTime = 275
-			g.rotSpeed = 1
-		case "#":
-			g.pauseTime = 250
-			g.rotSpeed = -1
-		case "%":
-			g.pauseTime = 225
-			g.rotSpeed = -1
-		}
-		return false
-	})
-}
-
-func (g *Game) renderNextFrames(speed float64) {
-	g.scrollerRotation += speed
-	if g.scrollerRotation >= 30 {
-		g.scrollerRotation -= 30
-	}
-	if g.scrollerRotation < 0 {
-		g.scrollerRotation += 30
-	}
-	if err := g.sliceStream.SetFrames(g.scrollerRotation, g.sineOffsets[:], 30); err != nil {
-		panic(err)
-	}
-}
-
 func (g *Game) drawScroller(screen *ebiten.Image) {
 	if err := g.rowWave.Begin(g.t); err != nil {
 		panic(err)
 	}
-	g.dnaFrames.DrawSlices(screen, g.sliceStream.Slices(), g.sliceStream.Head(), g.dnaDraw)
+	g.sliceProgram.Draw(screen, g.dnaFrames, g.dnaDraw)
 }
 
 func appendTexturedQuad(vertices []ebiten.Vertex, indices []uint16, dstX, dstY, dstWidth, dstHeight, srcX, srcY, srcWidth, srcHeight float32) ([]ebiten.Vertex, []uint16) {
@@ -638,23 +571,11 @@ func (g *Game) Update() error {
 			g.color = 0
 		}
 
-		// Update scroll
-		if !g.pause {
-			g.scrollMessage(g.scrollSpeed)
-		} else {
-			g.pauseTime--
-			if g.pauseTime == 0 {
-				g.pause = false
-				g.rotSpeed = 0.35
-				g.scrollSpeed = 1
-			}
+		// Advance text, control cues and the independent film rotation once.
+		if err := g.sliceProgram.Step(); err != nil {
+			return err
 		}
-
-		// Update timer
 		g.t += 0.30
-
-		// Update character frames
-		g.renderNextFrames(g.rotSpeed)
 
 		// Handle black rect reveal
 		if g.blackRectShow {

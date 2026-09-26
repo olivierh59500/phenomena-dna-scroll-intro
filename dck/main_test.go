@@ -25,16 +25,16 @@ func TestCharsetIndex(t *testing.T) {
 
 func TestCircularScrollerShift(t *testing.T) {
 	game := NewGame()
-	game.scrollMessage(3)
-	if game.sliceStream.Head() != 3 {
-		t.Fatalf("head = %d", game.sliceStream.Head())
+	game.sliceProgram.Insert(3)
+	if game.sliceProgram.Stream().Head() != 3 {
+		t.Fatalf("head = %d", game.sliceProgram.Stream().Head())
 	}
-	token, strip := game.sliceStream.Cursor()
+	token, strip := game.sliceProgram.Stream().Cursor()
 	if token != 0 || strip != 3 {
 		t.Fatalf("cursor = %d,%d", token, strip)
 	}
-	tail := (game.sliceStream.Head() + len(game.sliceStream.Slices()) - 1) % len(game.sliceStream.Slices())
-	if got := game.sliceStream.Slices()[tail]; got.Glyph != 0 || got.Slice != 2 {
+	tail := (game.sliceProgram.Stream().Head() + len(game.sliceProgram.Stream().Slices()) - 1) % len(game.sliceProgram.Stream().Slices())
+	if got := game.sliceProgram.Stream().Slices()[tail]; got.Glyph != 0 || got.Slice != 2 {
 		t.Fatalf("tail = %v", got)
 	}
 }
@@ -42,8 +42,7 @@ func TestCircularScrollerShift(t *testing.T) {
 func TestScrollerUpdateDoesNotAllocate(t *testing.T) {
 	game := NewGame()
 	allocations := testing.AllocsPerRun(1000, func() {
-		game.scrollMessage(1)
-		game.renderNextFrames(game.rotSpeed)
+		_ = game.sliceProgram.Step()
 	})
 	if allocations != 0 {
 		t.Fatalf("scroller update allocations = %v, want 0", allocations)
@@ -90,8 +89,7 @@ func BenchmarkScrollerUpdate(b *testing.B) {
 	game := NewGame()
 	b.ReportAllocs()
 	for b.Loop() {
-		game.scrollMessage(1)
-		game.renderNextFrames(game.rotSpeed)
+		_ = game.sliceProgram.Step()
 	}
 }
 
