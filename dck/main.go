@@ -9,7 +9,9 @@ import (
 	"image/color"
 	originalassets "phenomena-dna-scroll-intro"
 
+	"github.com/olivierh59500/democonstructionkit/composite"
 	"github.com/olivierh59500/democonstructionkit/motion"
+	"github.com/olivierh59500/democonstructionkit/palette"
 	"github.com/olivierh59500/democonstructionkit/scrolling"
 	"github.com/olivierh59500/democonstructionkit/sound"
 
@@ -46,36 +48,6 @@ var photonData = originalassets.
 	DCKAssetPhotonData()
 
 var musicData = originalassets.DCKAssetMusicData()
-
-// Color definitions for gradients
-var (
-	gdcRasterBar = []GradientStop{
-		{color.RGBA{0x44, 0x00, 0x44, 0xFF}, 0.0},
-		{color.RGBA{0xFF, 0xDD, 0xFF, 0xFF}, 0.5},
-		{color.RGBA{0x11, 0x11, 0x44, 0xFF}, 1.0},
-	}
-	gdcRedBar = []GradientStop{
-		{color.RGBA{0x00, 0x00, 0x00, 0xFF}, 0.0},
-		{color.RGBA{0xFF, 0x33, 0x00, 0xFF}, 0.5},
-		{color.RGBA{0x00, 0x00, 0x00, 0xFF}, 1.0},
-	}
-	gdcSilverBar = []GradientStop{
-		{color.RGBA{0x55, 0x55, 0x55, 0xFF}, 0.0},
-		{color.RGBA{0xFF, 0xFF, 0xFF, 0xFF}, 0.5},
-		{color.RGBA{0x55, 0x55, 0x55, 0xFF}, 1.0},
-	}
-	gdcPurpleBar = []GradientStop{
-		{color.RGBA{0x34, 0x22, 0x55, 0xFF}, 0.0},
-		{color.RGBA{0x60, 0x4E, 0x98, 0xFF}, 0.5},
-		{color.RGBA{0x34, 0x22, 0x55, 0xFF}, 1.0},
-	}
-)
-
-// GradientStop represents a color stop in a gradient
-type GradientStop struct {
-	Color  color.RGBA
-	Offset float64
-}
 
 // Character set for the scroller - must match the font.png layout
 // Font has 45 characters: " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!'?/,.-@"
@@ -201,7 +173,10 @@ func (g *Game) loadImages() error {
 		return fmt.Errorf("failed to load font: %w", err)
 	}
 	g.imgFont = ebiten.NewImageFromImage(img)
-	g.imgFontInverted = newInvertedImage(img)
+	g.imgFontInverted, err = composite.NewInvertedImage(img)
+	if err != nil {
+		return fmt.Errorf("failed to invert font: %w", err)
+	}
 	glyphs, err := scrolling.GridImages(g.imgFont, image.Pt(16, 26), len(g.fontGlyphs), len(g.fontGlyphs))
 	if err != nil {
 		return err
@@ -219,7 +194,10 @@ func (g *Game) loadImages() error {
 		return fmt.Errorf("failed to load logo: %w", err)
 	}
 	g.imgLogo = ebiten.NewImageFromImage(img)
-	g.imgLogoMask = newWhiteAlphaMask(img)
+	g.imgLogoMask, err = composite.NewWhiteSilhouette(img)
+	if err != nil {
+		return fmt.Errorf("failed to build logo silhouette: %w", err)
+	}
 
 	// Load photon
 	img, _, err = image.Decode(bytes.NewReader(photonData))
@@ -227,87 +205,21 @@ func (g *Game) loadImages() error {
 		return fmt.Errorf("failed to load photon: %w", err)
 	}
 	g.imgPhoton = ebiten.NewImageFromImage(img)
-	g.imgPhotonMask = newWhiteAlphaMask(img)
+	g.imgPhotonMask, err = composite.NewWhiteSilhouette(img)
+	if err != nil {
+		return fmt.Errorf("failed to build photon silhouette: %w", err)
+	}
 
 	g.imgMiddle = ebiten.NewImage(screenWidth, 300)
 	g.imgMiddle.Fill(color.RGBA{0x00, 0x01, 0x11, 0xFF})
-	g.rasterGradient = createGradient(screenWidth, 12, gdcRasterBar)
+	g.rasterGradient, err = composite.NewGradientImage(palette.GradientConfig{
+		Width: screenWidth, Height: 12, Stops: presets.PhenomenaRasterStops(),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to build raster gradient: %w", err)
+	}
 
 	return nil
-}
-
-// createGradient creates a horizontal gradient image
-func createGradient(width, height int, stops []GradientStop) *ebiten.Image {
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-
-	for y := 0; y < height; y++ {
-		t := float64(y) / float64(height-1)
-
-		// Find the two stops to interpolate between
-		var c color.RGBA
-		for i := 0; i < len(stops)-1; i++ {
-			if t >= stops[i].Offset && t <= stops[i+1].Offset {
-				// Interpolate between stops[i] and stops[i+1]
-				localT := (t - stops[i].Offset) / (stops[i+1].Offset - stops[i].Offset)
-				c = lerpColor(stops[i].Color, stops[i+1].Color, localT)
-				break
-			}
-		}
-
-		row := img.Pix[y*img.Stride : y*img.Stride+width*4]
-		for x := 0; x < len(row); x += 4 {
-			row[x] = c.R
-			row[x+1] = c.G
-			row[x+2] = c.B
-			row[x+3] = c.A
-		}
-	}
-
-	return ebiten.NewImageFromImage(img)
-}
-
-// lerpColor interpolates between two colors
-func lerpColor(c1, c2 color.RGBA, t float64) color.RGBA {
-	r := uint8(float64(c1.R)*(1-t) + float64(c2.R)*t)
-	g := uint8(float64(c1.G)*(1-t) + float64(c2.G)*t)
-	b := uint8(float64(c1.B)*(1-t) + float64(c2.B)*t)
-	a := uint8(float64(c1.A)*(1-t) + float64(c2.A)*t)
-
-	return color.RGBA{r, g, b, a}
-}
-
-func newWhiteAlphaMask(source image.Image) *ebiten.Image {
-	bounds := source.Bounds()
-	mask := image.NewNRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		row := mask.Pix[(y-bounds.Min.Y)*mask.Stride:]
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			_, _, _, alpha := source.At(x, y).RGBA()
-			offset := (x - bounds.Min.X) * 4
-			row[offset] = 0xff
-			row[offset+1] = 0xff
-			row[offset+2] = 0xff
-			row[offset+3] = uint8(alpha >> 8)
-		}
-	}
-	return ebiten.NewImageFromImage(mask)
-}
-
-func newInvertedImage(source image.Image) *ebiten.Image {
-	bounds := source.Bounds()
-	inverted := image.NewNRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		row := inverted.Pix[(y-bounds.Min.Y)*inverted.Stride:]
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			pixel := color.NRGBAModel.Convert(source.At(x, y)).(color.NRGBA)
-			offset := (x - bounds.Min.X) * 4
-			row[offset] = 0xff - pixel.R
-			row[offset+1] = 0xff - pixel.G
-			row[offset+2] = 0xff - pixel.B
-			row[offset+3] = pixel.A
-		}
-	}
-	return ebiten.NewImageFromImage(inverted)
 }
 
 // charToFontIndex converts a character to its position in the font bitmap
@@ -383,17 +295,31 @@ func (g *Game) initTextPages() {
 }
 
 // initCharacterFrames creates all animation frames for the 3D rotating characters
-func (g *Game) initCharacterFrames() {
-	core, front, back := createGradient(480, 9, gdcRedBar), createGradient(480, 33, gdcSilverBar), createGradient(480, 33, gdcPurpleBar)
+func (g *Game) initCharacterFrames() error {
+	gradient := func(height int, stops []palette.GradientStop) (*ebiten.Image, error) {
+		return composite.NewGradientImage(palette.GradientConfig{Width: 480, Height: height, Stops: stops})
+	}
+	core, err := gradient(9, presets.PhenomenaCoreStops())
+	if err != nil {
+		return err
+	}
 	defer core.Deallocate()
+	front, err := gradient(33, presets.PhenomenaFrontStops())
+	if err != nil {
+		return err
+	}
 	defer front.Deallocate()
+	back, err := gradient(33, presets.PhenomenaBackStops())
+	if err != nil {
+		return err
+	}
 	defer back.Deallocate()
-	var err error
 	g.dnaFrames, err = scrolling.NewDNAFrames(g.fontGlyphs[:], scrolling.DNAFrameConfig{Frames: 30, Height: 33, Step: 2.25, Front: front, Back: back, Core: core, CoreY: 12})
 	if err != nil {
-		panic(err)
+		return err
 	}
 	g.cnvFrames = g.dnaFrames.Image
+	return nil
 }
 
 // initAudio opens the audio device only after Ebitengine's game loop is live.
@@ -438,7 +364,9 @@ func (g *Game) Init() error {
 	g.initTextPages()
 
 	// Initialize character animation frames
-	g.initCharacterFrames()
+	if err := g.initCharacterFrames(); err != nil {
+		return err
+	}
 
 	// Bring message to the start
 	if err := g.sliceProgram.Warmup(320, 1); err != nil {
@@ -727,7 +655,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 		op = ebiten.DrawImageOptions{}
 		hue := g.color / 360.0
-		r, g2, b := hslToRGB(hue, 1.0, 0.5)
+		r, g2, b := palette.HSLToRGB(hue, 1.0, 0.5)
 		op.ColorScale.Scale(float32(r), float32(g2), float32(b), 1)
 		op.GeoM.Translate(285, 445)
 		screen.DrawImage(g.imgPhotonMask, &op)
@@ -784,47 +712,6 @@ func drawImageAt(dst, src *ebiten.Image, x, y int) {
 // Layout returns the screen dimensions
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
-}
-
-// hslToRGB converts HSL color values to RGB
-func hslToRGB(h, s, l float64) (float64, float64, float64) {
-	var r, g, b float64
-
-	if s == 0 {
-		r, g, b = l, l, l
-	} else {
-		var hue2rgb = func(p, q, t float64) float64 {
-			if t < 0 {
-				t += 1
-			}
-			if t > 1 {
-				t -= 1
-			}
-			if t < 1.0/6.0 {
-				return p + (q-p)*6*t
-			}
-			if t < 1.0/2.0 {
-				return q
-			}
-			if t < 2.0/3.0 {
-				return p + (q-p)*(2.0/3.0-t)*6
-			}
-			return p
-		}
-
-		var q float64
-		if l < 0.5 {
-			q = l * (1 + s)
-		} else {
-			q = l + s - l*s
-		}
-		p := 2*l - q
-		r = hue2rgb(p, q, h+1.0/3.0)
-		g = hue2rgb(p, q, h)
-		b = hue2rgb(p, q, h-1.0/3.0)
-	}
-
-	return r, g, b
 }
 
 // Cleanup cleans up resources

@@ -11,7 +11,7 @@ provides the configured stereo PCM format. The demo keeps its playback level and
 
 ## Shared DNA scroll
 
-`scrolling.NewDNAFrames` constructs the silver front, purple back and central raster. `SliceProgram` owns the two-pixel circular transport, control-character pauses, rotation and loop point; `RecurrentRowWave` owns the strip baseline. Multiscreen uses the same DCK recipes. The surrounding intro, artwork, message and music remain here.
+`scrolling.NewDNAFrames` constructs the silver front, purple back and central raster from the shared gradient materials. `SliceProgram` owns the two-pixel circular transport, control-character pauses, rotation and loop point; `RecurrentRowWave` owns the strip baseline. Multiscreen uses the same DCK recipes. The surrounding intro, artwork, message and music remain here.
 
 For a new scroll, register `DNA.Mode()` in `scrolling.New(Config{Modes: ...})`. Each font supplies its own metrics; filmstrips adapt to glyph dimensions, including odd widths and proportional or mixed fonts. Rotation speed, phase, twist wavelength/amplitude, vertical waves and face colors are configurable. Use `{shape:dna}` or a timed mode sequence.
 
