@@ -17,6 +17,11 @@ The two opening text pages now use `scrolling.BitmapPage`. Their normal and
 inverted glyph banks share one editable alphabet and the same pen/scale preset;
 the authored lines and Y positions remain in this demo. DCK compiles all glyph
 positions once and owns each retained page image, which is released at cleanup.
+The opening and closing reveal now use `composite.ScalarStagePainter`. Ordered
+image passes, stage thresholds, scalar brightness/alpha formulas and the moving
+photon placement are editable DCK data. This demo keeps its artwork, input,
+music and the live main-scene scroller. The renderer draws directly into the
+existing screen; it allocates no additional full-screen surface.
 
 For a new scroll, register `DNA.Mode()` in `scrolling.New(Config{Modes: ...})`. Each font supplies its own metrics; filmstrips adapt to glyph dimensions, including odd widths and proportional or mixed fonts. Rotation speed, phase, twist wavelength/amplitude, vertical waves and face colors are configurable. Use `{shape:dna}` or a timed mode sequence.
 

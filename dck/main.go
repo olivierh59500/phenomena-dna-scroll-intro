@@ -79,10 +79,11 @@ const (
 type Game struct {
 	dnaFrames *scrolling.DNAFrames
 	// Demo state
-	state       DemoState
-	initialized bool
-	finished    bool
-	director    *timeline.ScalarStages
+	state        DemoState
+	initialized  bool
+	finished     bool
+	director     *timeline.ScalarStages
+	presentation *composite.ScalarStagePainter
 
 	// Images
 	imgRasterbar       *ebiten.Image
@@ -104,11 +105,8 @@ type Game struct {
 
 	// Animation variables
 	t              float64
-	percent        float64
 	blackRectWidth float64
 	blackRectShow  bool
-	rasterbarY     float64
-	direction      float64
 
 	// Scroller data
 	sliceProgram *scrolling.SliceProgram
@@ -133,8 +131,6 @@ func NewGame() *Game {
 		state:          StateTextPage1,
 		blackRectWidth: 640,
 		blackRectShow:  true,
-		rasterbarY:     -40,
-		direction:      1,
 		audioVolume:    1,
 	}
 	programConfig, err := presets.PhenomenaDNAProgram(scrollMessage, charToFontIndex)
@@ -338,6 +334,15 @@ func (g *Game) Init() error {
 	if err := g.initTextPages(); err != nil {
 		return err
 	}
+	presentation, err := composite.NewScalarStagePainter(presets.PhenomenaStageMaterials(g.director, presets.PhenomenaStageImages{
+		RasterBar: g.imgRasterbar, Page1: g.imgTextPage1.Image(), Page2: g.imgTextPage2.Image(),
+		Logo: g.imgLogo, LogoMask: g.imgLogoMask, Middle: g.imgMiddle,
+		Raster: g.rasterGradient, Photon: g.imgPhoton,
+	}))
+	if err != nil {
+		return err
+	}
+	g.presentation = presentation
 
 	// Initialize character animation frames
 	if err := g.initCharacterFrames(); err != nil {
@@ -432,16 +437,9 @@ func (g *Game) Update() error {
 	case StateEnd:
 		return nil
 	}
-	previousStage := g.state
 	g.director.Step()
 	pose := g.director.State()
 	g.state = DemoState(pose.Stage)
-	if previousStage == StateTextPage1 {
-		g.rasterbarY = pose.Value
-	} else {
-		g.percent = pose.Value
-	}
-	g.direction = pose.Direction
 
 	// A desktop click or Android touch starts the outro.
 	if (ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) || len(g.touchIDs) > 0) && g.state == StateMainDemo {
@@ -451,149 +449,37 @@ func (g *Game) Update() error {
 	return nil
 }
 
-// Draw draws the game
+// Draw draws the authored main screen or the shared staged materials.
 func (g *Game) Draw(screen *ebiten.Image) {
 	if !g.initialized {
 		return
 	}
+	if g.state != StateMainDemo {
+		g.presentation.Draw(screen, g.photonMotion.Position())
+		return
+	}
 
-	switch g.state {
-	case StateTextPage1:
-		screen.Fill(color.Black)
-		var op ebiten.DrawImageOptions
-		op.GeoM.Translate(0, g.rasterbarY)
-		screen.DrawImage(g.imgRasterbar, &op)
-		g.imgTextPage1.Draw(screen)
+	screen.Fill(color.Black)
+	drawImageAt(screen, g.imgMiddle, 0, 130)
+	screen.DrawImage(g.imgLogo, nil)
 
-	case StateTextPage2:
-		screen.Fill(color.Black)
-		var op ebiten.DrawImageOptions
-		brightness := g.percent / 100.0
-		if brightness > 1 {
-			brightness = 2 - brightness
-		}
-		op.ColorScale.Scale(float32(brightness), float32(brightness), float32(brightness), 1)
-		screen.DrawImage(g.imgTextPage2.Image(), &op)
+	var op ebiten.DrawImageOptions
+	op.GeoM.Translate(0, 129)
+	screen.DrawImage(g.rasterGradient, &op)
+	op.GeoM.Reset()
+	op.GeoM.Translate(0, 430)
+	screen.DrawImage(g.rasterGradient, &op)
 
-	case StateShowLogo:
-		screen.Fill(color.RGBA{0x00, 0x01, 0x11, 0xFF})
+	op = ebiten.DrawImageOptions{}
+	hue := g.hueMotion.At(0) / 360.0
+	r, green, b := palette.HSLToRGB(hue, 1.0, 0.5)
+	op.ColorScale.Scale(float32(r), float32(green), float32(b), 1)
+	op.GeoM.Translate(285, 445)
+	screen.DrawImage(g.imgPhotonMask, &op)
 
-		if g.percent <= 100 {
-			var op ebiten.DrawImageOptions
-			brightness := g.percent / 100.0
-			op.ColorScale.Scale(float32(brightness), float32(brightness), float32(brightness), 1)
-			screen.DrawImage(g.imgLogo, &op)
-		} else {
-			screen.DrawImage(g.imgLogo, nil)
-			var op ebiten.DrawImageOptions
-			alpha := (200 - g.percent) / 100.0
-			op.ColorScale.ScaleAlpha(float32(alpha))
-			screen.DrawImage(g.imgLogoMask, &op)
-		}
-
-	case StateShowUpperRasterbar, StateShowLowerRasterbar, StateDropPhoton, StatePhotonFadeToRed:
-		screen.Fill(color.Black)
-		drawImageAt(screen, g.imgMiddle, 0, 130)
-
-		screen.DrawImage(g.imgLogo, nil)
-
-		if g.state >= StateShowUpperRasterbar {
-			alpha := 1.0
-			if g.state == StateShowUpperRasterbar {
-				alpha = g.percent / 100.0
-			}
-			var op ebiten.DrawImageOptions
-			op.ColorScale.ScaleAlpha(float32(alpha))
-			op.GeoM.Translate(0, 129)
-			screen.DrawImage(g.rasterGradient, &op)
-		}
-
-		if g.state >= StateShowLowerRasterbar {
-			alpha := 1.0
-			if g.state == StateShowLowerRasterbar {
-				alpha = g.percent / 100.0
-			}
-			var op ebiten.DrawImageOptions
-			op.ColorScale.ScaleAlpha(float32(alpha))
-			op.GeoM.Translate(0, 430)
-			screen.DrawImage(g.rasterGradient, &op)
-		}
-
-		if g.state >= StateDropPhoton {
-			if g.state == StatePhotonFadeToRed {
-				var op ebiten.DrawImageOptions
-				op.GeoM.Translate(285, 445)
-				lightness := g.percent / 100.0
-				op.ColorScale.Scale(float32(lightness), float32(lightness*0.5), float32(lightness*0.5), 1)
-				screen.DrawImage(g.imgPhoton, &op)
-			} else {
-				var op ebiten.DrawImageOptions
-				op.GeoM.Translate(285, g.photonMotion.Position())
-				screen.DrawImage(g.imgPhoton, &op)
-			}
-		}
-
-	case StateMainDemo:
-		screen.Fill(color.Black)
-		drawImageAt(screen, g.imgMiddle, 0, 130)
-
-		screen.DrawImage(g.imgLogo, nil)
-
-		var op ebiten.DrawImageOptions
-		op.GeoM.Translate(0, 129)
-		screen.DrawImage(g.rasterGradient, &op)
-
-		op.GeoM.Reset()
-		op.GeoM.Translate(0, 430)
-		screen.DrawImage(g.rasterGradient, &op)
-
-		op = ebiten.DrawImageOptions{}
-		hue := g.hueMotion.At(0) / 360.0
-		r, g2, b := palette.HSLToRGB(hue, 1.0, 0.5)
-		op.ColorScale.Scale(float32(r), float32(g2), float32(b), 1)
-		op.GeoM.Translate(285, 445)
-		screen.DrawImage(g.imgPhotonMask, &op)
-
-		g.drawScroller(screen)
-
-		if g.blackRectShow {
-			vector.FillRect(screen, 0, 375, float32(g.blackRectWidth), 55, color.RGBA{0x00, 0x01, 0x11, 0xFF}, false)
-		}
-
-	case StateHideLogo, StateHideLowerRasterbar, StateHideUpperRasterbar:
-		screen.Fill(color.Black)
-
-		if g.state == StateHideLogo {
-			if g.direction > 0 {
-				screen.DrawImage(g.imgLogo, nil)
-				var op ebiten.DrawImageOptions
-				alpha := g.percent / 100.0
-				op.ColorScale.ScaleAlpha(float32(alpha))
-				screen.DrawImage(g.imgLogoMask, &op)
-			} else {
-				var op ebiten.DrawImageOptions
-				alpha := g.percent / 100.0
-				op.ColorScale.ScaleAlpha(float32(alpha))
-				screen.DrawImage(g.imgLogoMask, &op)
-			}
-		}
-
-		if g.state == StateHideLowerRasterbar {
-			var op ebiten.DrawImageOptions
-			op.ColorScale.ScaleAlpha(float32(g.percent / 100.0))
-			op.GeoM.Translate(0, 430)
-			screen.DrawImage(g.rasterGradient, &op)
-		}
-
-		if g.state == StateHideUpperRasterbar {
-			var op ebiten.DrawImageOptions
-			op.ColorScale.ScaleAlpha(float32(g.percent / 100.0))
-			op.GeoM.Translate(0, 129)
-			screen.DrawImage(g.rasterGradient, &op)
-		}
-
-	case StateEnd:
-		screen.Fill(color.Black)
+	g.drawScroller(screen)
+	if g.blackRectShow {
+		vector.FillRect(screen, 0, 375, float32(g.blackRectWidth), 55, color.RGBA{0x00, 0x01, 0x11, 0xFF}, false)
 	}
 }
 
