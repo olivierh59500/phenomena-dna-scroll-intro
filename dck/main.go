@@ -364,18 +364,6 @@ func (g *Game) drawScroller(screen *ebiten.Image) {
 	g.sliceProgram.Draw(screen, g.dnaFrames, g.dnaDraw)
 }
 
-func appendTexturedQuad(vertices []ebiten.Vertex, indices []uint16, dstX, dstY, dstWidth, dstHeight, srcX, srcY, srcWidth, srcHeight float32) ([]ebiten.Vertex, []uint16) {
-	base := uint16(len(vertices))
-	vertices = append(vertices,
-		ebiten.Vertex{DstX: dstX, DstY: dstY, SrcX: srcX, SrcY: srcY, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		ebiten.Vertex{DstX: dstX + dstWidth, DstY: dstY, SrcX: srcX + srcWidth, SrcY: srcY, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		ebiten.Vertex{DstX: dstX, DstY: dstY + dstHeight, SrcX: srcX, SrcY: srcY + srcHeight, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		ebiten.Vertex{DstX: dstX + dstWidth, DstY: dstY + dstHeight, SrcX: srcX + srcWidth, SrcY: srcY + srcHeight, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-	)
-	indices = append(indices, base, base+1, base+2, base+1, base+2, base+3)
-	return vertices, indices
-}
-
 // Update updates the game state
 func (g *Game) Update() error {
 	if !g.initialized {
