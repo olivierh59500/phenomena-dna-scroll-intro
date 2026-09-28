@@ -21,6 +21,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	kit "github.com/olivierh59500/democonstructionkit"
 
 	audio "github.com/olivierh59500/democonstructionkit/sound/output"
 )
@@ -108,9 +109,8 @@ type Game struct {
 	blackRectShow  bool
 
 	// Scroller data
-	sliceProgram *scrolling.SliceProgram
+	dnaScroll    *scrolling.Scrolling
 	rowWave      *motion.RecurrentRowWave
-	dnaDraw      scrolling.DNADrawConfig
 	photonMotion *motion.GravityBounce
 	hueMotion    *motion.WrapBank
 
@@ -136,10 +136,6 @@ func NewGame() *Game {
 	if err != nil {
 		panic(err)
 	}
-	g.sliceProgram, err = scrolling.NewSliceProgram(programConfig)
-	if err != nil {
-		panic(err)
-	}
 	wave, err := motion.NewRecurrentRowWave(presets.PhenomenaDNARows())
 	if err != nil {
 		panic(err)
@@ -157,7 +153,13 @@ func NewGame() *Game {
 	if err != nil {
 		panic(err)
 	}
-	g.dnaDraw = scrolling.DNADrawConfig{SliceWidth: 2, ScaleX: 2, ScaleY: 1.5, OriginY: 156, Y: wave.At}
+	dnaDraw := scrolling.DNADrawConfig{SliceWidth: 2, ScaleX: 2, ScaleY: 1.5, OriginY: 156, Y: wave.At}
+	g.dnaScroll, err = scrolling.New(scrolling.Config{CuedSlices: &scrolling.CuedSlicesConfig{
+		Program: programConfig, Draw: dnaDraw,
+	}})
+	if err != nil {
+		panic(err)
+	}
 	return g
 }
 
@@ -288,7 +290,7 @@ func (g *Game) initCharacterFrames() error {
 		return err
 	}
 	g.cnvFrames = g.dnaFrames.Image
-	return nil
+	return g.dnaScroll.BindSliceFilm(g.dnaFrames)
 }
 
 // initAudio opens the audio device only after Ebitengine's game loop is live.
@@ -349,7 +351,7 @@ func (g *Game) Init() error {
 	}
 
 	// Bring message to the start
-	if err := g.sliceProgram.Warmup(320, 1); err != nil {
+	if err := g.dnaScroll.SliceProgramController().Warmup(320, 1); err != nil {
 		return err
 	}
 
@@ -361,7 +363,7 @@ func (g *Game) drawScroller(screen *ebiten.Image) {
 	if err := g.rowWave.BeginFrame(); err != nil {
 		panic(err)
 	}
-	g.sliceProgram.Draw(screen, g.dnaFrames, g.dnaDraw)
+	g.dnaScroll.Draw(screen)
 }
 
 // Update updates the game state
@@ -407,7 +409,7 @@ func (g *Game) Update() error {
 		}
 	case StateMainDemo:
 		g.hueMotion.Step()
-		if err := g.sliceProgram.Step(); err != nil {
+		if err := g.dnaScroll.Update(kit.Frame{}); err != nil {
 			return err
 		}
 		if err := g.rowWave.AdvanceFrame(); err != nil {
@@ -465,6 +467,9 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 // Cleanup cleans up resources
 func (g *Game) Cleanup() {
+	if g.dnaScroll != nil {
+		g.dnaScroll.Close()
+	}
 	if g.imgTextPage1 != nil {
 		g.imgTextPage1.Close()
 	}

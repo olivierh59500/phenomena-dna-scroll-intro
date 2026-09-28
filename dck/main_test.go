@@ -25,16 +25,16 @@ func TestCharsetIndex(t *testing.T) {
 
 func TestCircularScrollerShift(t *testing.T) {
 	game := NewGame()
-	game.sliceProgram.Insert(3)
-	if game.sliceProgram.Stream().Head() != 3 {
-		t.Fatalf("head = %d", game.sliceProgram.Stream().Head())
+	game.dnaScroll.SliceProgramController().Insert(3)
+	if game.dnaScroll.SliceProgramController().Stream().Head() != 3 {
+		t.Fatalf("head = %d", game.dnaScroll.SliceProgramController().Stream().Head())
 	}
-	token, strip := game.sliceProgram.Stream().Cursor()
+	token, strip := game.dnaScroll.SliceProgramController().Stream().Cursor()
 	if token != 0 || strip != 3 {
 		t.Fatalf("cursor = %d,%d", token, strip)
 	}
-	tail := (game.sliceProgram.Stream().Head() + len(game.sliceProgram.Stream().Slices()) - 1) % len(game.sliceProgram.Stream().Slices())
-	if got := game.sliceProgram.Stream().Slices()[tail]; got.Glyph != 0 || got.Slice != 2 {
+	tail := (game.dnaScroll.SliceProgramController().Stream().Head() + len(game.dnaScroll.SliceProgramController().Stream().Slices()) - 1) % len(game.dnaScroll.SliceProgramController().Stream().Slices())
+	if got := game.dnaScroll.SliceProgramController().Stream().Slices()[tail]; got.Glyph != 0 || got.Slice != 2 {
 		t.Fatalf("tail = %v", got)
 	}
 }
@@ -42,7 +42,7 @@ func TestCircularScrollerShift(t *testing.T) {
 func TestScrollerUpdateDoesNotAllocate(t *testing.T) {
 	game := NewGame()
 	allocations := testing.AllocsPerRun(1000, func() {
-		_ = game.sliceProgram.Step()
+		_ = game.dnaScroll.SliceProgramController().Step()
 	})
 	if allocations != 0 {
 		t.Fatalf("scroller update allocations = %v, want 0", allocations)
@@ -89,7 +89,7 @@ func BenchmarkScrollerUpdate(b *testing.B) {
 	game := NewGame()
 	b.ReportAllocs()
 	for b.Loop() {
-		_ = game.sliceProgram.Step()
+		_ = game.dnaScroll.SliceProgramController().Step()
 	}
 }
 
