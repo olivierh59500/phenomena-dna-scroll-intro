@@ -3,6 +3,25 @@
 
 Port Go/Ebitengine de l’intro Phenomena, disponible sur ordinateur et Android.
 
+<!-- Project showcase -->
+## Screenshots
+
+[![The Phenomena logo above a bitmap scroller following the animated red sine wave](docs/media/screenshot-1.png)](docs/media/screenshot-1.png)
+
+The Phenomena logo above a bitmap scroller following the animated red sine wave.
+
+## Video
+
+[![Animated preview of Phenomena DNA Scroll Intro](docs/media/preview.gif)](https://github.com/olivierh59500/phenomena-dna-scroll-intro/raw/refs/heads/main/docs/media/preview.mp4)
+
+**[Watch or download the 24-second MP4 preview with sound](https://github.com/olivierh59500/phenomena-dna-scroll-intro/raw/refs/heads/main/docs/media/preview.mp4)**
+
+This preview is captured from the Go production.
+
+The animated image is silent; the MP4 includes the soundtrack.
+
+<!-- End project showcase -->
+
 ## Ordinateur
 
 ```sh
